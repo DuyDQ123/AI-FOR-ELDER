@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <!-- Lịch uống thuốc hôm nay -->
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">Lịch Uống Thuốc Hôm Nay</h4>
+            </div>
+            <div class="card-body">
+                {% if schedules %}
+                    <div class="list-group">
+                    {% for schedule in schedules %}
+                        {% for medicine in medicines %}
+                            {% if medicine.id == schedule.medicine_id %}
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <h5 class="mb-1">{{ medicine.name }}</h5>
+                                            <p class="mb-1">Thời gian: {{ schedule.time }}</p>
+                                            <small>{{ medicine.notes }}</small>
+                                        </div>
+                                        <div>
+                                            <button class="btn btn-success btn-sm">Đã uống</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                    {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-center">Không có lịch uống thuốc nào cho hôm nay</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Danh sách thuốc -->
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">Danh Sách Thuốc</h4>
+            </div>
+            <div class="card-body">
+                {% if medicines %}
+                    <div class="list-group">
+                    {% for medicine in medicines %}
+                        <div class="list-group-item">
+                            <h5 class="mb-1">{{ medicine.name }}</h5>
+                            <p class="mb-1">{{ medicine.description }}</p>
+                            {% if medicine.image %}
+                                <img src="{{ medicine.image }}" alt="{{ medicine.name }}" class="img-thumbnail mb-2" style="max-width: 100px;">
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-center">Chưa có thuốc nào được thêm vào</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Nút thêm nhanh -->
+        <div class="d-grid gap-2">
+            <a href="{{ url_for('add_medicine') }}" class="btn btn-primary mb-2">
+                <i class="fas fa-plus"></i> Thêm Thuốc Mới
+            </a>
+            <a href="{{ url_for('add_schedule') }}" class="btn btn-success mb-2">
+                <i class="fas fa-clock"></i> Thêm Lịch Uống Thuốc
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Thông báo -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="toast-header bg-primary text-white">
+            <strong class="me-auto">Nhắc nhở</strong>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body">
+            Đã đến giờ uống thuốc!
+        </div>
+    </div>
+</div>
+{% endblock %}
