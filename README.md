@@ -187,12 +187,4 @@ pip3 install -r requirements.txt --upgrade
 sudo systemctl restart medicine-reminder
 ```
 
-## Giấy Phép
-
-Distributed under the MIT License. See `LICENSE` for more information.
-
-## Liên Hệ
-
-Your Name - email@example.com
-
-Project Link: [https://github.com/yourusername/smart-medicine-reminder](https://github.com/yourusername/smart-medicine-reminder)
+#DuyCode <3
