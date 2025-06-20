@@ -1,11 +1,24 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for
-import json
-import os
+from flask_login import login_required, current_user
+from werkzeug.security import generate_password_hash
 from datetime import datetime, timedelta
 import platform
+import os
+
+from config import Config
+from models import db, User, Medicine, Schedule, MedicineHistory
+from auth import init_login_manager, admin_required, caregiver_required, require_api_key
+from routes.auth import auth
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key'
+app.config.from_object(Config)
+
+# Khởi tạo các extension
+db.init_app(app)
+init_login_manager(app)
+
+# Đăng ký blueprint
+app.register_blueprint(auth, url_prefix='/auth')
 
 # Khởi tạo Raspberry Pi handler chỉ khi chạy trên Raspberry Pi
 rpi_handler = None
@@ -19,143 +32,116 @@ if platform.system() == 'Linux' and 'arm' in platform.machine():
         print(f"Không thể khởi tạo Raspberry Pi handler: {e}")
         print("Ứng dụng sẽ chạy ở chế độ web-only")
 
-# Đường dẫn đến file JSON
-DATA_FILE = 'data/medicine.json'
-
-def load_medicine_data():
-    try:
-        with open(DATA_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except:
-        return {'medicines': [], 'schedules': [], 'history': []}
-
-def save_medicine_data(data):
-    os.makedirs('data', exist_ok=True)
-    with open(DATA_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
 # Routes chính
 @app.route('/')
+@login_required
 def index():
-    data = load_medicine_data()
-    current_schedules = get_today_schedules(data)
-    return render_template('index.html', 
-                         medicines=data['medicines'], 
-                         schedules=current_schedules)
+    schedules = Schedule.query.filter_by(user_id=current_user.id).all()
+    medicines = Medicine.query.filter_by(user_id=current_user.id).all()
+    return render_template('index.html', medicines=medicines, schedules=schedules)
 
 @app.route('/add_medicine', methods=['GET', 'POST'])
+@login_required
 def add_medicine():
     if request.method == 'POST':
-        data = load_medicine_data()
-        new_medicine = {
-            'id': len(data['medicines']) + 1,
-            'name': request.form['name'],
-            'description': request.form['description'],
-            'notes': request.form['notes'],
-            'image': request.form['image'] if 'image' in request.form else ''
-        }
-        data['medicines'].append(new_medicine)
-        save_medicine_data(data)
+        new_medicine = Medicine(
+            name=request.form['name'],
+            description=request.form['description'],
+            notes=request.form['notes'],
+            image=request.form['image'] if 'image' in request.form else '',
+            user_id=current_user.id
+        )
+        db.session.add(new_medicine)
+        db.session.commit()
         return redirect(url_for('index'))
     return render_template('add_medicine.html')
 
 @app.route('/add_schedule', methods=['GET', 'POST'])
+@login_required
 def add_schedule():
     if request.method == 'POST':
-        data = load_medicine_data()
-        new_schedule = {
-            'id': len(data['schedules']) + 1,
-            'medicine_id': int(request.form['medicine_id']),
-            'time': request.form['time'],
-            'days': request.form.getlist('days[]'),
-            'period': request.form['period'],
-            'active': True
-        }
-        data['schedules'].append(new_schedule)
-        save_medicine_data(data)
+        new_schedule = Schedule(
+            medicine_id=int(request.form['medicine_id']),
+            user_id=current_user.id,
+            time=request.form['time'],
+            days=request.form.getlist('days[]'),
+            period=request.form['period'],
+            active=True
+        )
+        db.session.add(new_schedule)
+        db.session.commit()
         return redirect(url_for('index'))
-    data = load_medicine_data()
-    return render_template('add_schedule.html', medicines=data['medicines'])
+    medicines = Medicine.query.filter_by(user_id=current_user.id).all()
+    return render_template('add_schedule.html', medicines=medicines)
 
 @app.route('/reports')
+@login_required
 def reports():
-    data = load_medicine_data()
-    weekly_stats = calculate_weekly_stats(data)
-    return render_template('reports.html', 
-                         medicines=data['medicines'], 
-                         schedules=data['schedules'],
-                         stats=weekly_stats)
+    weekly_stats = calculate_weekly_stats(current_user.id)
+    return render_template('reports.html', stats=weekly_stats)
 
 # API Endpoints
 @app.route('/api/check_schedule', methods=['GET'])
+@require_api_key
 def check_schedule():
-    data = load_medicine_data()
-    current_schedules = get_current_schedules(data)
-    return jsonify(current_schedules)
+    schedules = get_current_schedules(current_user.id)
+    return jsonify(schedules)
 
 @app.route('/api/confirm_medicine', methods=['POST'])
+@require_api_key
 def confirm_medicine():
-    data = load_medicine_data()
     schedule_id = request.json.get('schedule_id')
+    schedule = Schedule.query.get_or_404(schedule_id)
     
-    # Lưu lịch sử uống thuốc
-    history_entry = {
-        'schedule_id': schedule_id,
-        'timestamp': datetime.now().isoformat(),
-        'status': 'taken'
-    }
-    data['history'].append(history_entry)
-    save_medicine_data(data)
+    if schedule.user_id != current_user.id:
+        return jsonify({'error': 'Không có quyền truy cập'}), 403
+    
+    history_entry = MedicineHistory(
+        schedule_id=schedule_id,
+        timestamp=datetime.now(),
+        status='taken'
+    )
+    db.session.add(history_entry)
+    db.session.commit()
+    
     return jsonify({'success': True})
 
-@app.route('/api/medicines', methods=['GET'])
-def get_medicines():
-    data = load_medicine_data()
-    return jsonify(data['medicines'])
-
 # Helper functions
-def get_today_schedules(data):
-    today = datetime.now().strftime('%A')
-    return [
-        schedule for schedule in data['schedules']
-        if today in schedule['days'] and schedule['active']
-    ]
-
-def get_current_schedules(data):
+def get_current_schedules(user_id):
     current_time = datetime.now()
-    today_schedules = get_today_schedules(data)
+    today_schedules = Schedule.query.filter_by(
+        user_id=user_id,
+        active=True
+    ).all()
     
     current_schedules = []
     for schedule in today_schedules:
-        schedule_time = datetime.strptime(schedule['time'], '%H:%M').time()
+        schedule_time = datetime.strptime(schedule.time, '%H:%M').time()
         schedule_datetime = datetime.combine(current_time.date(), schedule_time)
         
-        # Kiểm tra thời gian trong khoảng 5 phút
         if abs((schedule_datetime - current_time).total_seconds()) <= 300:
-            medicine = next(
-                (m for m in data['medicines'] if m['id'] == schedule['medicine_id']),
-                None
-            )
+            medicine = Medicine.query.get(schedule.medicine_id)
             if medicine:
                 current_schedules.append({
-                    'schedule_id': schedule['id'],
-                    'medicine_name': medicine['name'],
-                    'time': schedule['time'],
-                    'notes': medicine['notes']
+                    'schedule_id': schedule.id,
+                    'medicine_name': medicine.name,
+                    'time': schedule.time,
+                    'notes': medicine.notes
                 })
     
     return current_schedules
 
-def calculate_weekly_stats(data):
+def calculate_weekly_stats(user_id):
     now = datetime.now()
     week_start = now - timedelta(days=now.weekday())
-    week_history = [
-        entry for entry in data['history']
-        if datetime.fromisoformat(entry['timestamp']) >= week_start
-    ]
     
-    total_scheduled = len(get_today_schedules(data)) * 7
-    taken = len([e for e in week_history if e['status'] == 'taken'])
+    week_history = MedicineHistory.query.join(Schedule).filter(
+        Schedule.user_id == user_id,
+        MedicineHistory.timestamp >= week_start
+    ).all()
+    
+    total_scheduled = Schedule.query.filter_by(user_id=user_id, active=True).count() * 7
+    taken = sum(1 for h in week_history if h.status == 'taken')
     missed = total_scheduled - taken
     
     return {
@@ -165,14 +151,11 @@ def calculate_weekly_stats(data):
     }
 
 if __name__ == '__main__':
-    # Khởi tạo dữ liệu
-    if not os.path.exists(DATA_FILE):
-        save_medicine_data({'medicines': [], 'schedules': [], 'history': []})
+    with app.app_context():
+        db.create_all()
     
     try:
-        # Chạy Flask server
         app.run(debug=True, host='0.0.0.0', port=5000)
     finally:
-        # Cleanup GPIO nếu đang chạy trên Raspberry Pi
         if rpi_handler:
             rpi_handler.cleanup()
