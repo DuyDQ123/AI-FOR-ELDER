@@ -8,58 +8,34 @@
                 <h4 class="mb-0">Thêm Thuốc Mới</h4>
             </div>
             <div class="card-body">
-                <form method="POST" action="{{ url_for('add_medicine') }}">
+                <form method="POST" action="{{ url_for('main.add_medicine') }}">
                     <div class="mb-3">
-                        <label for="name" class="form-label">Tên thuốc <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control form-control-lg" id="name" name="name" required>
+                        <label for="name" class="form-label">Tên thuốc</label>
+                        <input type="text" class="form-control" id="name" name="name" required>
                     </div>
-
+                    
                     <div class="mb-3">
-                        <label for="description" class="form-label">Công dụng</label>
+                        <label for="description" class="form-label">Mô tả</label>
                         <textarea class="form-control" id="description" name="description" rows="3"></textarea>
                     </div>
-
+                    
                     <div class="mb-3">
                         <label for="notes" class="form-label">Lưu ý khi sử dụng</label>
-                        <textarea class="form-control" id="notes" name="notes" rows="3" 
-                            placeholder="Ví dụ: Uống sau khi ăn, Không dùng với rượu bia..."></textarea>
+                        <textarea class="form-control" id="notes" name="notes" rows="2"></textarea>
                     </div>
-
+                    
                     <div class="mb-3">
-                        <label for="image" class="form-label">Hình ảnh thuốc (URL)</label>
-                        <input type="url" class="form-control" id="image" name="image" 
-                            placeholder="https://example.com/image.jpg">
-                        <div class="form-text">Có thể bỏ qua nếu không có hình ảnh</div>
+                        <label for="image" class="form-label">Hình ảnh (URL)</label>
+                        <input type="url" class="form-control" id="image" name="image">
                     </div>
-
+                    
                     <div class="d-grid gap-2">
-                        <button type="submit" class="btn btn-primary btn-lg">
-                            Lưu Thuốc
-                        </button>
-                        <a href="{{ url_for('index') }}" class="btn btn-secondary">
-                            Quay Lại
-                        </a>
+                        <button type="submit" class="btn btn-primary">Thêm Thuốc</button>
+                        <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Hủy</a>
                     </div>
                 </form>
             </div>
         </div>
     </div>
 </div>
-
-<!-- Preview hình ảnh -->
-<script>
-document.getElementById('image').addEventListener('change', function() {
-    const url = this.value;
-    if (url) {
-        const img = new Image();
-        img.onload = function() {
-            alert('Hình ảnh hợp lệ!');
-        };
-        img.onerror = function() {
-            alert('URL hình ảnh không hợp lệ. Vui lòng kiểm tra lại!');
-        };
-        img.src = url;
-    }
-});
-</script>
 {% endblock %}

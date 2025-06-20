@@ -5,93 +5,73 @@
     <div class="col-md-8">
         <div class="card">
             <div class="card-header bg-primary text-white">
-                <h4 class="mb-0">Đặt Lịch Uống Thuốc</h4>
+                <h4 class="mb-0">Thêm Lịch Uống Thuốc</h4>
             </div>
             <div class="card-body">
-                <form method="POST" action="{{ url_for('add_schedule') }}">
+                <form method="POST" action="{{ url_for('main.add_schedule') }}">
                     <div class="mb-3">
-                        <label for="medicine_id" class="form-label">Chọn thuốc <span class="text-danger">*</span></label>
-                        <select class="form-select form-select-lg" id="medicine_id" name="medicine_id" required>
+                        <label for="medicine_id" class="form-label">Chọn thuốc</label>
+                        <select class="form-select" id="medicine_id" name="medicine_id" required>
                             <option value="">-- Chọn thuốc --</option>
                             {% for medicine in medicines %}
                             <option value="{{ medicine.id }}">{{ medicine.name }}</option>
                             {% endfor %}
                         </select>
                     </div>
-
+                    
                     <div class="mb-3">
-                        <label class="form-label">Thời điểm uống thuốc <span class="text-danger">*</span></label>
-                        <select class="form-select form-select-lg" name="period" required>
-                            <option value="morning">Buổi sáng</option>
-                            <option value="noon">Buổi trưa</option>
-                            <option value="evening">Buổi chiều</option>
-                            <option value="night">Buổi tối</option>
-                        </select>
+                        <label for="time" class="form-label">Thời gian</label>
+                        <input type="time" class="form-control" id="time" name="time" required>
                     </div>
-
+                    
                     <div class="mb-3">
-                        <label for="time" class="form-label">Giờ uống thuốc <span class="text-danger">*</span></label>
-                        <input type="time" class="form-control form-control-lg" id="time" name="time" required>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label d-block">Các ngày uống thuốc <span class="text-danger">*</span></label>
-                        <div class="btn-group" role="group">
-                            <input type="checkbox" class="btn-check" name="days[]" id="day2" value="Monday" checked>
-                            <label class="btn btn-outline-primary" for="day2">Thứ 2</label>
-
-                            <input type="checkbox" class="btn-check" name="days[]" id="day3" value="Tuesday" checked>
-                            <label class="btn btn-outline-primary" for="day3">Thứ 3</label>
-
-                            <input type="checkbox" class="btn-check" name="days[]" id="day4" value="Wednesday" checked>
-                            <label class="btn btn-outline-primary" for="day4">Thứ 4</label>
-
-                            <input type="checkbox" class="btn-check" name="days[]" id="day5" value="Thursday" checked>
-                            <label class="btn btn-outline-primary" for="day5">Thứ 5</label>
-
-                            <input type="checkbox" class="btn-check" name="days[]" id="day6" value="Friday" checked>
-                            <label class="btn btn-outline-primary" for="day6">Thứ 6</label>
-
-                            <input type="checkbox" class="btn-check" name="days[]" id="day7" value="Saturday" checked>
-                            <label class="btn btn-outline-primary" for="day7">Thứ 7</label>
-
-                            <input type="checkbox" class="btn-check" name="days[]" id="day8" value="Sunday" checked>
-                            <label class="btn btn-outline-primary" for="day8">CN</label>
+                        <label class="form-label">Các ngày trong tuần</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="days[]" value="Monday" id="monday">
+                            <label class="form-check-label" for="monday">Thứ 2</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="days[]" value="Tuesday" id="tuesday">
+                            <label class="form-check-label" for="tuesday">Thứ 3</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="days[]" value="Wednesday" id="wednesday">
+                            <label class="form-check-label" for="wednesday">Thứ 4</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="days[]" value="Thursday" id="thursday">
+                            <label class="form-check-label" for="thursday">Thứ 5</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="days[]" value="Friday" id="friday">
+                            <label class="form-check-label" for="friday">Thứ 6</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="days[]" value="Saturday" id="saturday">
+                            <label class="form-check-label" for="saturday">Thứ 7</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="days[]" value="Sunday" id="sunday">
+                            <label class="form-check-label" for="sunday">Chủ nhật</label>
                         </div>
                     </div>
-
+                    
+                    <div class="mb-3">
+                        <label for="period" class="form-label">Chu kỳ uống</label>
+                        <select class="form-select" id="period" name="period">
+                            <option value="daily">Hàng ngày</option>
+                            <option value="weekly">Hàng tuần</option>
+                            <option value="custom">Tùy chỉnh</option>
+                        </select>
+                    </div>
+                    
                     <div class="d-grid gap-2">
-                        <button type="submit" class="btn btn-primary btn-lg">
-                            Lưu Lịch Uống Thuốc
-                        </button>
-                        <a href="{{ url_for('index') }}" class="btn btn-secondary">
-                            Quay Lại
-                        </a>
+                        <button type="submit" class="btn btn-primary">Tạo Lịch</button>
+                        <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Hủy</a>
                     </div>
                 </form>
             </div>
         </div>
     </div>
 </div>
-
-<script>
-// Đặt thời gian mặc định dựa vào period được chọn
-document.querySelector('select[name="period"]').addEventListener('change', function() {
-    const timeInput = document.getElementById('time');
-    switch(this.value) {
-        case 'morning':
-            timeInput.value = '07:00';
-            break;
-        case 'noon':
-            timeInput.value = '12:00';
-            break;
-        case 'evening':
-            timeInput.value = '17:00';
-            break;
-        case 'night':
-            timeInput.value = '20:00';
-            break;
-    }
-});
-</script>
 {% endblock %}

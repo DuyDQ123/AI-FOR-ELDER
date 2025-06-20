@@ -3,18 +3,18 @@ from datetime import timedelta
 
 class Config:
     # Cài đặt bảo mật cơ bản
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'mat-khau-rat-khó-đoán'
+    SECRET_KEY = os.environ.get('SECRET_KEY') or 'super-secret-key-2024'
     
     # Cấu hình SQLAlchemy
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///medicine.db'
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'mysql://root:@localhost/elder_project'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # Cấu hình JWT
-    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY') or 'khóa-bí-mật-jwt'
+    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY') or 'jwt-secret-key-2024'
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)
     
     # Cấu hình bảo mật
-    SECURITY_PASSWORD_SALT = 'muối-cho-mật-khẩu'
+    SECURITY_PASSWORD_SALT = 'security-password-salt-2024'
     SECURITY_PASSWORD_HASH = 'sha512_crypt'
     
     # Cấu hình email

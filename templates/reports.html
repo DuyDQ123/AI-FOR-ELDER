@@ -2,129 +2,103 @@
 
 {% block content %}
 <div class="row">
-    <div class="col-md-12 mb-4">
+    <div class="col-md-8 mx-auto">
         <div class="card">
             <div class="card-header bg-primary text-white">
-                <h4 class="mb-0">Báo Cáo Tuần Này</h4>
+                <h4 class="mb-0">Báo Cáo Tuần</h4>
             </div>
             <div class="card-body">
-                <!-- Tổng quan -->
+                <!-- Thống kê tổng quan -->
                 <div class="row mb-4">
                     <div class="col-md-4">
                         <div class="card bg-success text-white">
                             <div class="card-body">
-                                <h5>Đã Uống Đúng Giờ</h5>
-                                <h2>85%</h2>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="card bg-warning text-dark">
-                            <div class="card-body">
-                                <h5>Uống Trễ Giờ</h5>
-                                <h2>10%</h2>
+                                <h5 class="card-title">Đã Uống</h5>
+                                <h2 class="mb-0">{{ stats.taken }}</h2>
                             </div>
                         </div>
                     </div>
                     <div class="col-md-4">
                         <div class="card bg-danger text-white">
                             <div class="card-body">
-                                <h5>Quên Uống</h5>
-                                <h2>5%</h2>
+                                <h5 class="card-title">Bỏ Lỡ</h5>
+                                <h2 class="mb-0">{{ stats.missed }}</h2>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-info text-white">
+                            <div class="card-body">
+                                <h5 class="card-title">Tỷ Lệ Tuân Thủ</h5>
+                                <h2 class="mb-0">{{ "%.1f"|format(stats.compliance_rate) }}%</h2>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Chi tiết theo ngày -->
-                <div class="table-responsive">
-                    <table class="table table-bordered">
-                        <thead class="table-primary">
-                            <tr>
-                                <th>Thời Gian</th>
-                                <th>Thuốc</th>
-                                <th>Trạng Thái</th>
-                                <th>Ghi Chú</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for schedule in schedules %}
-                                {% for medicine in medicines %}
-                                    {% if medicine.id == schedule.medicine_id %}
-                                        <tr>
-                                            <td>
-                                                {{ schedule.time }}<br>
-                                                <small class="text-muted">{{ schedule.period }}</small>
-                                            </td>
-                                            <td>{{ medicine.name }}</td>
-                                            <td>
-                                                <span class="badge bg-success">Đã uống</span>
-                                            </td>
-                                            <td>Uống đúng giờ</td>
-                                        </tr>
-                                    {% endif %}
-                                {% endfor %}
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                <!-- Biểu đồ -->
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <canvas id="weeklyChart"></canvas>
+                    </div>
                 </div>
 
-                <!-- Biểu đồ tuần -->
-                <div class="mt-4">
-                    <h5>Biểu Đồ Tuần</h5>
-                    <canvas id="weeklyChart"></canvas>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Phân tích và Đề xuất -->
-    <div class="col-md-12">
-        <div class="card">
-            <div class="card-header bg-info text-white">
-                <h4 class="mb-0">Phân Tích & Đề Xuất</h4>
-            </div>
-            <div class="card-body">
+                <!-- Lời khuyên -->
                 <div class="alert alert-info">
-                    <h5>Nhận xét:</h5>
-                    <ul>
-                        <li>Tỷ lệ uống thuốc đúng giờ đang rất tốt (85%)</li>
-                        <li>Thường hay quên uống thuốc vào buổi trưa</li>
-                        <li>Nên điều chỉnh thời gian uống thuốc buổi trưa sớm hơn 30 phút</li>
-                    </ul>
+                    {% if stats.compliance_rate >= 90 %}
+                        <h5 class="alert-heading">Rất tốt! 👏</h5>
+                        <p>Bạn đã tuân thủ lịch uống thuốc rất tốt. Hãy duy trì thói quen này nhé!</p>
+                    {% elif stats.compliance_rate >= 70 %}
+                        <h5 class="alert-heading">Khá tốt! 👍</h5>
+                        <p>Bạn đã thực hiện tương đối tốt. Cố gắng cải thiện thêm nhé!</p>
+                    {% else %}
+                        <h5 class="alert-heading">Cần cải thiện! 💪</h5>
+                        <p>Bạn cần cố gắng tuân thủ lịch uống thuốc tốt hơn để đạt hiệu quả điều trị cao nhất.</p>
+                    {% endif %}
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Chart.js -->
+<!-- Dữ liệu cho biểu đồ -->
+<div id="chart-data" 
+     data-taken="{{ stats.taken }}"
+     data-missed="{{ stats.missed }}"
+     style="display: none;">
+</div>
+
+<!-- Script vẽ biểu đồ -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+(function() {
+    const chartData = document.getElementById('chart-data');
+    const takenCount = parseInt(chartData.dataset.taken);
+    const missedCount = parseInt(chartData.dataset.missed);
+    
     const ctx = document.getElementById('weeklyChart').getContext('2d');
     new Chart(ctx, {
-        type: 'bar',
+        type: 'doughnut',
         data: {
-            labels: ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'CN'],
+            labels: ['Đã Uống', 'Bỏ Lỡ'],
             datasets: [{
-                label: 'Tỷ lệ uống thuốc đúng giờ (%)',
-                data: [100, 80, 90, 85, 75, 95, 70],
-                backgroundColor: 'rgba(54, 162, 235, 0.5)',
-                borderColor: 'rgba(54, 162, 235, 1)',
-                borderWidth: 1
+                data: [takenCount, missedCount],
+                backgroundColor: ['#198754', '#dc3545']
             }]
         },
         options: {
             responsive: true,
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    max: 100
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                },
+                title: {
+                    display: true,
+                    text: 'Thống Kê Tuần'
                 }
             }
         }
     });
-});
+})();
 </script>
 {% endblock %}

@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+.welcome-section {
+    background: linear-gradient(120deg, #84fab0 0%, #8fd3f4 100%);
+    min-height: 60vh;
+    border-radius: 15px;
+    padding: 2rem;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+    animation: fadeIn 1s ease-in;
+}
+
+.feature-list {
+    margin-top: 1.5rem;
+}
+
+.feature-item {
+    background: rgba(255, 255, 255, 0.9);
+    padding: 0.75rem;
+    margin: 0.4rem 0;
+    border-radius: 8px;
+    transition: transform 0.3s ease;
+    display: flex;
+    align-items: center;
+    box-shadow: 0 3px 5px rgba(0,0,0,0.05);
+}
+
+.feature-item:hover {
+    transform: translateX(5px);
+}
+
+.feature-icon {
+    font-size: 1.2rem;
+    margin-right: 0.75rem;
+    color: #2c3e50;
+}
+
+.welcome-title {
+    color: #2c3e50;
+    font-weight: bold;
+    font-size: 2rem;
+    margin-bottom: 1.5rem;
+    text-shadow: 1px 1px 3px rgba(0,0,0,0.1);
+}
+
+.welcome-description {
+    color: #34495e;
+    font-size: 1rem;
+    margin-bottom: 2rem;
+}
+
+.btn-welcome {
+    padding: 0.75rem 2rem;
+    font-size: 1rem;
+    border-radius: 25px;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+}
+
+.btn-welcome:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+}
+
+.btn-login {
+    background: #2c3e50;
+    border: none;
+}
+
+.btn-register {
+    background: white;
+    color: #2c3e50;
+    border: 2px solid #2c3e50;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+</style>
+
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-7">
+            <div class="welcome-section">
+                <div class="text-center">
+                    <h1 class="welcome-title display-4">Chào mừng đến với<br>Hệ Thống Nhắc Thuốc Thông Minh</h1>
+                    <p class="welcome-description">
+                        Giải pháp thông minh giúp bạn quản lý và nhắc nhở uống thuốc đúng giờ,
+                        đảm bảo sức khỏe tốt nhất cho bạn và người thân.
+                    </p>
+                </div>
+
+                <div class="feature-list">
+                    <div class="row justify-content-center">
+                        <div class="col-md-10 col-lg-9">
+                            <div class="feature-item">
+                                <span class="feature-icon">💊</span>
+                                <span>Quản lý danh sách thuốc thông minh</span>
+                            </div>
+                            <div class="feature-item">
+                                <span class="feature-icon">⏰</span>
+                                <span>Đặt lịch và nhắc nhở tự động</span>
+                            </div>
+                            <div class="feature-item">
+                                <span class="feature-icon">📱</span>
+                                <span>Giao diện dễ sử dụng trên mọi thiết bị</span>
+                            </div>
+                            <div class="feature-item">
+                                <span class="feature-icon">📊</span>
+                                <span>Theo dõi và báo cáo chi tiết</span>
+                            </div>
+                            <div class="feature-item">
+                                <span class="feature-icon">🔔</span>
+                                <span>Thông báo nhắc nhở đa nền tảng</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="text-center mt-5">
+                    <a href="{{ url_for('auth.login') }}" class="btn btn-welcome btn-login text-white mx-2 mb-2">Đăng nhập</a>
+                    <a href="{{ url_for('auth.register') }}" class="btn btn-welcome btn-register mx-2 mb-2">Đăng ký ngay</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

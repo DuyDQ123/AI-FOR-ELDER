@@ -22,7 +22,7 @@
                                             <small>{{ medicine.notes }}</small>
                                         </div>
                                         <div>
-                                            <button class="btn btn-success btn-sm">Đã uống</button>
+                                            <button class="btn btn-success btn-sm confirm-medicine" data-schedule-id="{{ schedule.id }}">Đã uống</button>
                                         </div>
                                     </div>
                                 </div>
@@ -64,10 +64,10 @@
 
         <!-- Nút thêm nhanh -->
         <div class="d-grid gap-2">
-            <a href="{{ url_for('add_medicine') }}" class="btn btn-primary mb-2">
+            <a href="{{ url_for('main.add_medicine') }}" class="btn btn-primary mb-2">
                 <i class="fas fa-plus"></i> Thêm Thuốc Mới
             </a>
-            <a href="{{ url_for('add_schedule') }}" class="btn btn-success mb-2">
+            <a href="{{ url_for('main.add_schedule') }}" class="btn btn-success mb-2">
                 <i class="fas fa-clock"></i> Thêm Lịch Uống Thuốc
             </a>
         </div>

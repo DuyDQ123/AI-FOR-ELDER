@@ -8,14 +8,6 @@
                 <h4 class="mb-0">Đăng Nhập</h4>
             </div>
             <div class="card-body">
-                {% with messages = get_flashed_messages(with_categories=true) %}
-                    {% if messages %}
-                        {% for category, message in messages %}
-                            <div class="alert alert-{{ category }}">{{ message }}</div>
-                        {% endfor %}
-                    {% endif %}
-                {% endwith %}
-                
                 <form method="POST" action="{{ url_for('auth.login') }}">
                     <div class="mb-3">
                         <label for="username" class="form-label">Tên đăng nhập</label>

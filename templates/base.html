@@ -10,28 +10,104 @@
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container">
-            <a class="navbar-brand" href="/">Nhắc Thuốc Thông Minh</a>
+            <a class="navbar-brand" href="{{ url_for('main.index') }}">Nhắc Thuốc Thông Minh</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav">
+                    {% if current_user.is_authenticated %}
+                        {% if current_user.is_super_admin() %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('main.system_config') }}">Cấu Hình Hệ Thống</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('main.user_management') }}">Quản Lý Người Dùng</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('main.admin_logs') }}">Nhật Ký Hệ Thống</a>
+                            </li>
+                        {% elif current_user.is_admin() %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('main.manage_users') }}">Quản Lý User</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('main.manage_schedules') }}">Quản Lý Lịch</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('main.admin_logs') }}">Nhật Ký</a>
+                            </li>
+                        {% else %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('main.index') }}">Trang Chủ</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('main.add_medicine') }}">Thêm Thuốc</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('main.add_schedule') }}">Đặt Lịch</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('main.reports') }}">Báo Cáo</a>
+                            </li>
+                        {% endif %}
+                    {% endif %}
+                </ul>
+                <ul class="navbar-nav ms-auto">
+                    {% if current_user.is_authenticated %}
                     <li class="nav-item">
-                        <a class="nav-link" href="/">Trang Chủ</a>
+                        <a class="nav-link" href="{{ url_for('auth.profile') }}">Tài Khoản</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('add_medicine') }}">Thêm Thuốc</a>
+                        <a class="nav-link" href="{{ url_for('auth.logout') }}">Đăng Xuất</a>
+                    </li>
+                    {% else %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('auth.login') }}">Đăng Nhập</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('add_schedule') }}">Đặt Lịch</a>
+                        <a class="nav-link" href="{{ url_for('auth.register') }}">Đăng Ký</a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('reports') }}">Báo Cáo</a>
-                    </li>
+                    {% endif %}
                 </ul>
             </div>
         </div>
     </nav>
+
+    <style>
+        .alert-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1050;
+            max-width: 300px;
+        }
+        .custom-alert {
+            margin-bottom: 10px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            opacity: 0;
+            transform: translateX(100%);
+            transition: all 0.5s ease;
+        }
+        .custom-alert.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+    </style>
+
+    <div class="alert-container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show custom-alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
 
     <div class="container mt-4">
         {% block content %}{% endblock %}

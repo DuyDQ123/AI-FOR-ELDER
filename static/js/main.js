@@ -3,6 +3,34 @@ document.addEventListener('DOMContentLoaded', function() {
     if ('Notification' in window) {
         Notification.requestPermission();
     }
+    
+    // Tự động ẩn flash messages sau 3 giây
+    const flashMessages = document.querySelectorAll('.custom-alert');
+    flashMessages.forEach(message => {
+        // Thêm class show sau 100ms để trigger animation
+        setTimeout(() => {
+            message.classList.add('show');
+        }, 100);
+
+        // Tự động ẩn sau 3 giây
+        setTimeout(() => {
+            message.classList.remove('show');
+            setTimeout(() => {
+                message.remove();
+            }, 500);
+        }, 3000);
+    });
+
+    // Xử lý nút đóng
+    document.querySelectorAll('.alert .btn-close').forEach(button => {
+        button.addEventListener('click', function() {
+            const alert = this.closest('.custom-alert');
+            alert.classList.remove('show');
+            setTimeout(() => {
+                alert.remove();
+            }, 500);
+        });
+    });
 });
 
 // Hàm hiển thị thông báo nhắc uống thuốc

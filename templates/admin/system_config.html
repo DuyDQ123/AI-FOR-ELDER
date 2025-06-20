@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h2 class="mb-4">Cấu Hình Hệ Thống</h2>
+
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Cấu hình</th>
+                            <th>Giá trị</th>
+                            <th>Mô tả</th>
+                            <th>Cập nhật lúc</th>
+                            <th>Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for config in configs %}
+                        <tr>
+                            <td>{{ config.key }}</td>
+                            <td>{{ config.value }}</td>
+                            <td>{{ config.description }}</td>
+                            <td>{{ config.updated_at.strftime('%d/%m/%Y %H:%M') }}</td>
+                            <td>
+                                <button class="btn btn-sm btn-primary" 
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#editModal"
+                                        data-key="{{ config.key }}"
+                                        data-value="{{ config.value }}">
+                                    Sửa
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Sửa Cấu Hình -->
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Sửa Cấu Hình</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST">
+                <div class="modal-body">
+                    <input type="hidden" name="key" id="configKey">
+                    <div class="mb-3">
+                        <label class="form-label">Giá trị mới</label>
+                        <input type="text" class="form-control" name="value" id="configValue" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+                    <button type="submit" class="btn btn-primary">Lưu thay đổi</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const editModal = document.getElementById('editModal');
+    editModal.addEventListener('show.bs.modal', function(event) {
+        const button = event.relatedTarget;
+        const key = button.getAttribute('data-key');
+        const value = button.getAttribute('data-value');
+        
+        editModal.querySelector('#configKey').value = key;
+        editModal.querySelector('#configValue').value = value;
+    });
+});
+</script>
+{% endblock %}

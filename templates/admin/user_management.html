@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h2 class="mb-4">Quản Lý Người Dùng</h2>
+
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Tên đăng nhập</th>
+                            <th>Email</th>
+                            <th>Quyền hiện tại</th>
+                            <th>Trạng thái</th>
+                            <th>Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in users %}
+                        <tr>
+                            <td>{{ user.id }}</td>
+                            <td>{{ user.username }}</td>
+                            <td>{{ user.email }}</td>
+                            <td>
+                                {% if user.role == 'admin' %}
+                                    <span class="badge bg-danger">Admin</span>
+                                {% else %}
+                                    <span class="badge bg-primary">User</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if user.status == 'active' %}
+                                    <span class="badge bg-success">Hoạt động</span>
+                                {% else %}
+                                    <span class="badge bg-warning">Đã khóa</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="btn-group" role="group">
+                                    {% if user.status == 'active' %}
+                                    <form method="POST" action="{{ url_for('main.manage_user', user_id=user.id) }}" class="d-inline">
+                                        <input type="hidden" name="action" value="lock">
+                                        <button type="submit" class="btn btn-warning btn-sm" 
+                                                onclick="return confirm('Bạn có chắc muốn khóa người dùng này?')">
+                                            Khóa
+                                        </button>
+                                    </form>
+                                    {% else %}
+                                    <form method="POST" action="{{ url_for('main.manage_user', user_id=user.id) }}" class="d-inline">
+                                        <input type="hidden" name="action" value="unlock">
+                                        <button type="submit" class="btn btn-success btn-sm">Mở khóa</button>
+                                    </form>
+                                    {% endif %}
+                                    
+                                    <button class="btn btn-primary btn-sm" 
+                                            data-bs-toggle="modal" 
+                                            data-bs-target="#changeRoleModal"
+                                            data-user-id="{{ user.id }}"
+                                            data-username="{{ user.username }}"
+                                            data-role="{{ user.role }}">
+                                        Đổi quyền
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Đổi Quyền -->
+<div class="modal fade" id="changeRoleModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Đổi Quyền Người Dùng</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" id="changeRoleForm">
+                <div class="modal-body">
+                    <p>Đổi quyền cho người dùng: <strong id="modalUsername"></strong></p>
+                    <input type="hidden" name="action" value="change_role">
+                    <div class="mb-3">
+                        <label class="form-label">Quyền mới</label>
+                        <select class="form-select" name="role" required>
+                            <option value="user">User</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+                    <button type="submit" class="btn btn-primary">Lưu thay đổi</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const roleModal = document.getElementById('changeRoleModal');
+    roleModal.addEventListener('show.bs.modal', function(event) {
+        const button = event.relatedTarget;
+        const userId = button.getAttribute('data-user-id');
+        const username = button.getAttribute('data-username');
+        const currentRole = button.getAttribute('data-role');
+        
+        roleModal.querySelector('#modalUsername').textContent = username;
+        roleModal.querySelector('form').action = `/admin/user/${userId}`;
+        roleModal.querySelector('select').value = currentRole;
+    });
+});
+</script>
+{% endblock %}

@@ -14,19 +14,43 @@ def init_login_manager(app):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+def super_admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated or not current_user.is_super_admin():
+            return jsonify({'error': 'Yêu cầu quyền Super Admin'}), 403
+        return f(*args, **kwargs)
+    return decorated_function
+
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated or current_user.role != 'admin':
-            return jsonify({'error': 'Không có quyền truy cập'}), 403
+        if not current_user.is_authenticated or \
+           not (current_user.is_admin() or current_user.is_super_admin()):
+            return jsonify({'error': 'Yêu cầu quyền Admin'}), 403
+        if not current_user.is_active():
+            return jsonify({'error': 'Tài khoản đã bị khóa'}), 403
+        return f(*args, **kwargs)
+    return decorated_function
+
+def user_active_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return jsonify({'error': 'Vui lòng đăng nhập'}), 401
+        if not current_user.is_active():
+            return jsonify({'error': 'Tài khoản đã bị khóa'}), 403
         return f(*args, **kwargs)
     return decorated_function
 
 def caregiver_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated or current_user.role not in ['caregiver', 'admin']:
-            return jsonify({'error': 'Không có quyền truy cập'}), 403
+        if not current_user.is_authenticated or \
+           not (current_user.user_type == 'caregiver' or current_user.is_admin() or current_user.is_super_admin()):
+            return jsonify({'error': 'Yêu cầu quyền Người chăm sóc'}), 403
+        if not current_user.is_active():
+            return jsonify({'error': 'Tài khoản đã bị khóa'}), 403
         return f(*args, **kwargs)
     return decorated_function
 

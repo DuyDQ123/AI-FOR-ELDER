@@ -1,189 +1,135 @@
 # Hệ Thống Nhắc Thuốc Thông Minh
 
-Hệ thống nhắc uống thuốc thông minh sử dụng Raspberry Pi và Flask, giúp người cao tuổi quản lý việc uống thuốc hiệu quả.
+Hệ thống nhắc uống thuốc thông minh sử dụng Raspberry Pi và Flask, giúp người cao tuổi quản lý việc uống thuốc hiệu quả và an toàn.
 
 ## Tính Năng Chính
 
-- 📅 Lập lịch uống thuốc theo tuần/ngày/giờ
-- 🔔 Nhắc nhở thông qua âm thanh và màn hình OLED
-- 📱 Giao diện web quản lý thuốc và lịch uống
-- 📊 Báo cáo và thống kê việc uống thuốc
-- 🤖 Hỗ trợ xác nhận bằng nút nhấn
-- 📷 Quét mã QR để nhận diện thuốc
+### 1. Nhắc Thuốc Thông Minh
+- 📅 Lập lịch theo tuần/ngày/giờ (sáng/trưa/chiều/tối)
+- 🔔 Nhắc nhở qua âm thanh và màn hình OLED
+- 🔄 Tự động lặp lại nhắc nhở nếu chưa xác nhận
+- ✅ Tự động tắt khi đã xác nhận uống thuốc
 
-## Yêu Cầu Phần Cứng
+### 2. Quản Lý Dữ Liệu
+- 📱 Giao diện web đa nền tảng
+- ➕ Thêm/Sửa/Xóa lịch uống thuốc
+- 📝 Quản lý danh sách thuốc (tên, công dụng, hình ảnh)
+- 📊 Báo cáo tuần về việc uống thuốc
+- ⚠️ Cảnh báo cho người chăm sóc
 
-- Raspberry Pi (3B+ hoặc 4 khuyến nghị)
-- Màn hình OLED SSD1306 (I2C)
-- USB Camera (cho quét mã QR)
-- Loa hoặc buzzer (kết nối qua jack 3.5mm)
+### 3. Phân Tích & AI
+- 📈 Phân tích hành vi uống thuốc
+- 💡 Gợi ý điều chỉnh lịch uống
+- 👤 Nhận diện khuôn mặt người dùng
+- 📷 Quét mã QR nhận diện thuốc
+
+### 4. Tính Năng Phần Cứng
+- 📍 Tích hợp NFC cho nhận diện thuốc
+- 🌡️ Theo dõi nhiệt độ bảo quản
+- 🔐 Tự động điều khiển tủ thuốc
+- 🗣️ Tích hợp trợ lý giọng nói
+
+## Yêu Cầu Hệ Thống
+
+### Phần Cứng
+- Raspberry Pi (3B+ hoặc 4)
+- Màn hình OLED SSD1306
+- Module âm thanh PCM5102
+- Camera USB
 - 4 nút nhấn
-- Dây jumper
-- Thẻ nhớ SD (ít nhất 8GB)
-- Nguồn điện 5V/2.5A
+- Các cảm biến (tùy chọn)
 
-## Sơ Đồ Kết Nối GPIO
+### Phần Mềm
+- Python 3.7+
+- Flask Framework
+- SQLite/PostgreSQL
+- OpenCV
+- Các thư viện hỗ trợ
 
-```
-GPIO Connections:
-┌────────────────────────────────────────────┐
-│ GPIO2 (SDA)    → OLED SDA                 │
-│ GPIO3 (SCL)    → OLED SCL                 │
-│ GPIO18         → Nút xác nhận uống thuốc  │
-│ GPIO23         → Nút thuốc kế tiếp        │
-│ GPIO17         → Nút xem DS thuốc         │
-│ GPIO27         → Nút cài đặt              │
-│ 3.3V           → OLED VCC                 │
-│ GND            → OLED GND + Nút GND       │
-└────────────────────────────────────────────┘
-```
+## Cài Đặt
 
-## Cài Đặt Hệ Thống
-
-### 1. Cài Đặt Raspberry Pi OS
-```bash
-# Tải Raspberry Pi OS và ghi vào thẻ SD
-# Kích hoạt I2C trong raspi-config
-sudo raspi-config
-# Chọn: Interface Options -> I2C -> Enable
-```
-
-### 2. Cài Đặt Các Gói Phụ Thuộc
+### 1. Chuẩn Bị Môi Trường
 ```bash
 # Cập nhật hệ thống
-sudo apt update
-sudo apt upgrade -y
+sudo apt update && sudo apt upgrade -y
 
 # Cài đặt các gói cần thiết
-sudo apt install -y python3-pip python3-dev python3-smbus i2c-tools
-sudo apt install -y libsdl2-mixer-2.0-0  # Cho âm thanh
-
-# Cài đặt thư viện cho QR code
-sudo apt install -y libzbar0 libzbar-dev   # Cho pyzbar
-sudo apt install -y python3-opencv         # Cho OpenCV
-sudo apt install -y v4l-utils             # Cho USB camera
-
-# Kiểm tra camera
-v4l2-ctl --list-devices                   # Liệt kê camera
+sudo apt install -y python3-pip python3-dev python3-venv
+sudo apt install -y libsdl2-mixer-2.0-0 libzbar0
 ```
 
-### 3. Cài Đặt Môi Trường Python
+### 2. Cài Đặt Ứng Dụng
 ```bash
-# Clone repository
-git clone https://github.com/yourusername/smart-medicine-reminder
-cd smart-medicine-reminder
+# Tạo môi trường ảo
+python3 -m venv venv
+source venv/bin/activate  # Linux
+venv\Scripts\activate     # Windows
 
 # Cài đặt dependencies
-pip3 install -r requirements.txt
+pip install -r requirements.txt
+
+# Khởi tạo cơ sở dữ liệu
+flask db upgrade
 ```
 
-### 4. Kiểm Tra USB Camera
+### 3. Cấu Hình
 ```bash
-# Kiểm tra camera được nhận dạng
-ls /dev/video*
+# Tạo file .env
+cp .env.example .env
 
-# Test camera
-sudo apt install -y fswebcam
-fswebcam test.jpg
+# Chỉnh sửa các thông số trong .env
+nano .env
 ```
 
-### 5. Cấu Hình Âm Thanh
+### 4. Chạy Ứng Dụng
 ```bash
-# Kiểm tra đầu ra âm thanh
-aplay -l
+# Chạy ứng dụng
+python app.py
 
-# Đặt đầu ra mặc định (thường là headphone)
-sudo amixer cset numid=3 1
+# Truy cập web interface
+http://localhost:5000
 ```
 
-## Chạy Ứng Dụng
+## Bảo Mật
 
-### 1. Khởi Động Server
+### Tính Năng Bảo Mật
+- 🔐 Xác thực người dùng
+- 👥 Phân quyền (bệnh nhân/người chăm sóc/admin)
+- 🔒 Bảo vệ API bằng key
+- 📡 Hỗ trợ HTTPS
+- 🔑 Mã hóa dữ liệu nhạy cảm
+
+### Đăng Nhập Hệ Thống
+- Tạo tài khoản mới tại /auth/register
+- Đăng nhập tại /auth/login
+- Quản lý thông tin tại /auth/profile
+
+## Hỗ Trợ
+
+### Xử Lý Sự Cố
+- Kiểm tra logs trong thư mục /logs
+- Xem status hệ thống tại /status
+- Báo lỗi qua GitHub Issues
+
+### Liên Hệ
+- Email: support@example.com
+- Website: http://example.com
+- GitHub: http://github.com/example
+
+## Cập Nhật
+
+### Phiên Bản Mới
 ```bash
-# Từ thư mục dự án
-python3 app.py
-```
-
-### 2. Truy Cập Web Interface
-- Truy cập từ máy tính cùng mạng LAN:
-```
-http://<raspberry_pi_ip>:5000
-```
-
-## Sử Dụng
-
-### 1. Thêm Thuốc Mới
-- Truy cập "Thêm Thuốc" trên web
-- Nhập thông tin thuốc (tên, công dụng, lưu ý)
-- Tạo và in mã QR cho thuốc mới
-
-### 2. Đặt Lịch Uống Thuốc
-- Vào mục "Đặt Lịch"
-- Chọn thuốc từ danh sách
-- Đặt thời gian và các ngày trong tuần
-- Lưu lịch uống thuốc
-
-### 3. Tương Tác với Thiết Bị
-- Nút 1 (GPIO18): Xác nhận đã uống thuốc
-- Nút 2 (GPIO23): Xem thuốc tiếp theo
-- Nút 3 (GPIO17): Xem danh sách thuốc
-- Nút 4 (GPIO27): Bật/tắt quét mã QR
-
-### 4. Quét Mã QR Thuốc
-- Nhấn nút 4 để bật chế độ quét QR
-- Đưa mã QR thuốc vào camera
-- Hệ thống sẽ tự động nhận diện và xác thực thuốc
-
-## Xử Lý Sự Cố
-
-### Camera Không Hoạt Động
-1. Kiểm tra kết nối USB:
-```bash
-lsusb
-```
-2. Kiểm tra thiết bị video:
-```bash
-ls /dev/video*
-v4l2-ctl --list-devices
-```
-3. Cấp quyền truy cập:
-```bash
-sudo usermod -a -G video $USER
-```
-
-### Mã QR Không Được Nhận Diện
-1. Kiểm tra ánh sáng đầy đủ
-2. Đảm bảo mã QR nằm trong tầm nhìn camera
-3. Kiểm tra log lỗi:
-```bash
-tail -f /var/log/syslog
-```
-
-### Các Lỗi Khác
-- Màn hình OLED không hiển thị:
-```bash
-sudo i2cdetect -y 1
-```
-- Âm thanh không hoạt động:
-```bash
-alsamixer
-```
-- Nút nhấn không phản hồi:
-```bash
-sudo gpio readall
-```
-
-## Bảo Trì
-
-### Sao Lưu Dữ Liệu
-```bash
-cp -r data/ backup/
-```
-
-### Cập Nhật Phần Mềm
-```bash
+# Pull code mới
 git pull
-pip3 install -r requirements.txt --upgrade
+
+# Cập nhật dependencies
+pip install -r requirements.txt --upgrade
+
+# Cập nhật database
+flask db upgrade
+
+# Khởi động lại service
 sudo systemctl restart medicine-reminder
 ```
 
