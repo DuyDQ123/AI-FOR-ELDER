@@ -128,11 +128,24 @@ def index():
 @login_required
 def add_medicine():
     if request.method == 'POST':
+        # Check if compartment is already in use
+        existing = Medicine.query.filter_by(
+            compartment_number=int(request.form['compartment_number'])
+        ).first()
+        
+        if existing:
+            return "Ngăn này đã được sử dụng", 400
+            
         new_medicine = Medicine(
             name=request.form['name'],
             description=request.form['description'],
             notes=request.form['notes'],
             image=request.form['image'] if 'image' in request.form else '',
+            compartment_number=int(request.form['compartment_number']),
+            quantity=int(request.form['quantity']),
+            min_quantity=int(request.form['min_quantity']),
+            dosage=int(request.form['dosage']),
+            expiry_date=datetime.strptime(request.form['expiry_date'], '%Y-%m-%d').date() if request.form['expiry_date'] else None,
             user_id=current_user.id
         )
         db.session.add(new_medicine)
@@ -189,6 +202,57 @@ def confirm_medicine():
     db.session.add(history_entry)
     db.session.commit()
     
+    return jsonify({'success': True})
+
+@main.route('/api/medicine/<int:medicine_id>', methods=['GET'])
+@require_api_key
+def get_medicine(medicine_id):
+    medicine = Medicine.query.get_or_404(medicine_id)
+    return jsonify({
+        'id': medicine.id,
+        'name': medicine.name,
+        'compartment_number': medicine.compartment_number,
+        'quantity': medicine.quantity,
+        'dosage': medicine.dosage,
+        'notes': medicine.notes
+    })
+
+@main.route('/api/update_quantity', methods=['POST'])
+@require_api_key
+def update_quantity():
+    medicine_id = request.json.get('medicine_id')
+    quantity_change = request.json.get('quantity_change')
+    
+    if not all([medicine_id, quantity_change]):
+        return jsonify({'error': 'Missing required fields'}), 400
+        
+    medicine = Medicine.query.get_or_404(medicine_id)
+    old_quantity = medicine.quantity
+    medicine.quantity = max(0, old_quantity + quantity_change)
+    
+    if medicine.quantity <= medicine.min_quantity:
+        # TODO: Send notification about low quantity
+        pass
+        
+    db.session.commit()
+    return jsonify({
+        'success': True,
+        'new_quantity': medicine.quantity
+    })
+
+@main.route('/api/verify_compartment', methods=['POST'])
+@require_api_key
+def verify_compartment():
+    compartment = request.json.get('compartment')
+    medicine_id = request.json.get('medicine_id')
+    
+    if not all([compartment, medicine_id]):
+        return jsonify({'error': 'Missing required fields'}), 400
+        
+    medicine = Medicine.query.get_or_404(medicine_id)
+    if medicine.compartment_number != compartment:
+        return jsonify({'error': 'Compartment mismatch'}), 400
+        
     return jsonify({'success': True})
 
 def get_current_schedules(user_id):

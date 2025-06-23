@@ -9,6 +9,7 @@ from models import db
 from auth import init_login_manager
 from routes.auth import auth
 from routes.main import main
+from routes.test_dispenser import test_dispenser
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -20,6 +21,7 @@ init_login_manager(app)
 # Đăng ký blueprints
 app.register_blueprint(auth, url_prefix='/auth')
 app.register_blueprint(main)
+app.register_blueprint(test_dispenser, url_prefix='/api')
 
 # Khởi tạo Raspberry Pi handler chỉ khi chạy trên Raspberry Pi
 rpi_handler = None

@@ -17,14 +17,50 @@ PIN_NEXT = 23      # Nút chuyển thuốc tiếp theo
 PIN_LIST = 17      # Nút xem danh sách thuốc
 PIN_SETTINGS = 27  # Nút cài đặt
 
+# I2S Audio pins
+I2S_BCK = 12      # Bit Clock
+I2S_LRCK = 13     # Left-Right Clock (Word Select)
+I2S_DIN = 20      # Data In
+
+# Servo motor pins for each compartment (1-6)
+SERVO_PINS = {
+    1: 5,
+    2: 6,
+    3: 21, 
+    4: 19,
+    5: 26,
+    6: 16
+}
+
+# Servo angles
+SERVO_CLOSED = 0
+SERVO_OPEN = 90
+SERVO_DISPENSE = 180
+
 # I2C settings for OLED
 I2C_BUS = 1
 OLED_ADDRESS = 0x3C
 OLED_WIDTH = 128
 OLED_HEIGHT = 64
 
+# Constants for power protection
+SERVO_COOLDOWN_TIME = 2.0  # Seconds between servo operations
+SERVO_MAX_OPERATIONS = 10   # Maximum operations per minute
+SERVO_OPERATION_TIMEOUT = 1.5  # Maximum time for one operation
+
+# Sound alert settings
+ALERT_MAX_REPEATS = 3      # Maximum number of alert repetitions
+ALERT_INTERVAL = 30        # Seconds between alerts
+ALERT_VOLUME = 80         # Default volume percentage
+
 class RaspberryPiHandler:
     def __init__(self, server_url="http://localhost:5000"):
+        # Configure I2S audio
+        os.system('sudo modprobe snd-bcm2835')  # Enable I2S kernel module
+        os.system('sudo dtoverlay i2s-mmap')    # Enable I2S overlay
+        
+        # Set default audio output to I2S
+        os.system('amixer cset numid=3 1')      # 1 for I2S output
         self.server_url = server_url
         self.current_schedules = []
         self.is_alerting = False
@@ -32,6 +68,10 @@ class RaspberryPiHandler:
         self.camera = None
         self.is_scanning = False
         self.last_qr_code = None
+        self.servos = {}
+        self.last_servo_operation = 0  # Timestamp of last servo use
+        self.servo_operations_count = 0  # Count operations within a minute
+        self.servo_operations_timer = time.time()  # Timer for operation counting
         
         # Khởi tạo GPIO
         GPIO.setmode(GPIO.BCM)
@@ -39,6 +79,13 @@ class RaspberryPiHandler:
         GPIO.setup(PIN_NEXT, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.setup(PIN_LIST, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.setup(PIN_SETTINGS, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        
+        # Khởi tạo servo motors
+        for compartment, pin in SERVO_PINS.items():
+            GPIO.setup(pin, GPIO.OUT)
+            self.servos[compartment] = GPIO.PWM(pin, 50)  # 50Hz frequency
+            self.servos[compartment].start(0)
+            self._set_servo_angle(compartment, SERVO_CLOSED)
         
         # Khởi tạo OLED
         self.oled = Adafruit_SSD1306.SSD1306_128_64(rst=None)
@@ -145,7 +192,8 @@ class RaspberryPiHandler:
     def _button_callback(self, channel):
         """Xử lý sự kiện nút nhấn"""
         if channel == PIN_CONFIRM and self.is_alerting:
-            self._confirm_medicine()
+            if self._dispense_medicine(self.current_schedule):
+                self._confirm_medicine()
         elif channel == PIN_NEXT:
             self._show_next_medicine()
         elif channel == PIN_LIST:
@@ -183,6 +231,9 @@ class RaspberryPiHandler:
         )
         self._display_oled_message(message)
         
+        self.current_alert_count = 0
+        self.last_alert_time = time.time()
+        
         # Bắt đầu thread cảnh báo
         self.alert_thread = threading.Thread(target=self._alert_loop)
         self.alert_thread.daemon = True
@@ -206,12 +257,162 @@ class RaspberryPiHandler:
         self.oled.clear()
         self.oled.display()
         
-    def _play_alert_sound(self):
-        """Phát âm thanh cảnh báo"""
-        os.system('aplay /usr/share/sounds/sound.wav')
+    def _play_alert_sound(self, medicine_name=None):
+        """Phát âm thanh và thông báo bằng giọng nói qua I2S"""
+        try:
+            # Set volume for I2S output
+            os.system(f'amixer -c 1 sset PCM {ALERT_VOLUME}%')
+            
+            if medicine_name:
+                # Tạo thông báo bằng giọng nói
+                message = f"Đã đến giờ uống thuốc {medicine_name}"
+                try:
+                    # Sử dụng Google TTS với output qua I2S
+                    from gtts import gTTS
+                    tts = gTTS(text=message, lang='vi')
+                    tts.save('/tmp/medicine_alert.mp3')
+                    os.system('mpg123 -a hw:1,0 /tmp/medicine_alert.mp3')  # hw:1,0 là I2S DAC
+                except:
+                    # Fallback to espeak with I2S
+                    os.system(f'espeak -vvi+f3 -s 130 "{message}" --stdout | aplay -D plughw:1,0')
+            
+            # Phát âm thanh nhắc nhở qua I2S
+            alert_sound = '/home/pi/medicine_reminder.wav'
+            if os.path.exists(alert_sound):
+                os.system(f'aplay -D plughw:1,0 {alert_sound}')
+            else:
+                # Tạo âm thanh beep thông qua sox và phát qua I2S
+                os.system('play -n -c1 synth 0.1 sine 1000 vol 0.5 > /dev/null 2>&1')
+                
+        except Exception as e:
+            print(f"Lỗi phát âm thanh qua I2S: {e}")
+            # Không có fallback vì chỉ dùng I2S audio
+            
+    def _alert_loop(self):
+        """Vòng lặp phát cảnh báo định kỳ"""
+        while self.is_alerting and self.current_alert_count < ALERT_MAX_REPEATS:
+            current_time = time.time()
+            
+            # Phát cảnh báo lần đầu hoặc sau mỗi khoảng thời gian
+            if self.current_alert_count == 0 or (current_time - self.last_alert_time) >= ALERT_INTERVAL:
+                # Phát âm thanh cảnh báo
+                self._play_alert_sound(self.current_schedule.get('medicine_name'))
+                self.last_alert_time = current_time
+                self.current_alert_count += 1
+                
+                # Hiển thị số lần nhắc còn lại
+                remaining = ALERT_MAX_REPEATS - self.current_alert_count
+                if remaining > 0:
+                    print(f"Còn {remaining} lần nhắc")
+                    self._display_oled_message(
+                        f"Nhắc lần {self.current_alert_count}/{ALERT_MAX_REPEATS}\n"
+                        f"Thuốc: {self.current_schedule['medicine_name']}\n"
+                        f"Thời gian: {self.current_schedule['time']}"
+                    )
+            
+            time.sleep(1)  # Kiểm tra mỗi giây
         
+        if self.current_alert_count >= ALERT_MAX_REPEATS:
+            print("Đã hết số lần nhắc")
+            self._display_oled_message("Đã hết thời gian nhắc nhở\nVui lòng kiểm tra lịch sử")
+            
+        self.is_alerting = False
+        
+    def _check_servo_safety(self):
+        """Kiểm tra các điều kiện an toàn trước khi chạy servo"""
+        current_time = time.time()
+        
+        # Kiểm tra thời gian cooldown
+        if current_time - self.last_servo_operation < SERVO_COOLDOWN_TIME:
+            print(f"Đang trong thời gian cooldown. Còn {SERVO_COOLDOWN_TIME - (current_time - self.last_servo_operation):.1f}s")
+            return False
+            
+        # Reset bộ đếm operations mỗi phút
+        if current_time - self.servo_operations_timer >= 60:
+            self.servo_operations_count = 0
+            self.servo_operations_timer = current_time
+            
+        # Kiểm tra số lượng operations trong 1 phút
+        if self.servo_operations_count >= SERVO_MAX_OPERATIONS:
+            print("Đã đạt giới hạn số lần hoạt động trong 1 phút")
+            return False
+            
+        return True
+
+    def _set_servo_angle(self, compartment, angle):
+        """Điều khiển góc quay của servo với các biện pháp bảo vệ"""
+        if compartment not in self.servos:
+            return False
+            
+        if not self._check_servo_safety():
+            return False
+            
+        try:
+            # Ghi nhận thời điểm hoạt động
+            self.last_servo_operation = time.time()
+            self.servo_operations_count += 1
+            
+            # Convert angle to duty cycle (0-180 degrees maps to 2-12% duty cycle)
+            duty = angle / 18 + 2
+            self.servos[compartment].ChangeDutyCycle(duty)
+            
+            # Đợi servo đến vị trí với timeout
+            start_time = time.time()
+            while time.time() - start_time < SERVO_OPERATION_TIMEOUT:
+                time.sleep(0.1)
+                if time.time() - start_time >= 0.5:  # Minimum wait time
+                    break
+                    
+            self.servos[compartment].ChangeDutyCycle(0)  # Stop servo jitter
+            return True
+            
+        except Exception as e:
+            print(f"Lỗi điều khiển servo: {e}")
+            self.servos[compartment].ChangeDutyCycle(0)  # Ensure servo is stopped
+            return False
+
+    def _dispense_medicine(self, schedule):
+        """Thả thuốc từ ngăn được chỉ định"""
+        try:
+            # Get medicine details from server
+            response = requests.get(f"{self.server_url}/api/medicine/{schedule['medicine_id']}")
+            if response.status_code != 200:
+                print("Không thể lấy thông tin thuốc")
+                return False
+                
+            medicine = response.json()
+            compartment = medicine['compartment_number']
+            
+            if not (1 <= compartment <= 6):
+                print(f"Số ngăn không hợp lệ: {compartment}")
+                return False
+            
+            # Open compartment
+            self._set_servo_angle(compartment, SERVO_DISPENSE)
+            time.sleep(1)  # Wait for medicine to drop
+            
+            # Close compartment
+            self._set_servo_angle(compartment, SERVO_CLOSED)
+            
+            # Update medicine quantity on server
+            requests.post(f"{self.server_url}/api/update_quantity",
+                        json={
+                            'medicine_id': schedule['medicine_id'],
+                            'quantity_change': -medicine['dosage']
+                        })
+            
+            return True
+            
+        except Exception as e:
+            print(f"Lỗi khi thả thuốc: {e}")
+            return False
+
     def cleanup(self):
         """Dọn dẹp GPIO và camera khi kết thúc"""
+        # Stop all servos
+        for servo in self.servos.values():
+            servo.stop()
+            
         GPIO.cleanup()
         if self.camera:
             self.camera.release()

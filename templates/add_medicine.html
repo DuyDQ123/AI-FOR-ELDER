@@ -28,6 +28,35 @@
                         <label for="image" class="form-label">Hình ảnh (URL)</label>
                         <input type="url" class="form-control" id="image" name="image">
                     </div>
+
+                    <div class="mb-3">
+                        <label for="compartment_number" class="form-label">Ngăn chứa thuốc (1-6)</label>
+                        <select class="form-control" id="compartment_number" name="compartment_number" required>
+                            {% for i in range(1, 7) %}
+                            <option value="{{ i }}">Ngăn {{ i }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="quantity" class="form-label">Số lượng viên thuốc</label>
+                        <input type="number" class="form-control" id="quantity" name="quantity" required min="0">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="min_quantity" class="form-label">Số lượng cảnh báo khi sắp hết</label>
+                        <input type="number" class="form-control" id="min_quantity" name="min_quantity" required min="1" value="5">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="dosage" class="form-label">Liều lượng mỗi lần uống (viên)</label>
+                        <input type="number" class="form-control" id="dosage" name="dosage" required min="1" value="1">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="expiry_date" class="form-label">Ngày hết hạn</label>
+                        <input type="date" class="form-control" id="expiry_date" name="expiry_date">
+                    </div>
                     
                     <div class="d-grid gap-2">
                         <button type="submit" class="btn btn-primary">Thêm Thuốc</button>
