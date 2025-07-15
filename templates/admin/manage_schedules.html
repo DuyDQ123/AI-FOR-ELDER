@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <h2 class="mb-4">Quản Lý Lịch Thuốc</h2>
+            <p class="text-muted mb-4">Chọn người dùng để xem lịch thuốc của họ</p>
+            
+            {% if users %}
+                <div class="row">
+                    {% for user in users %}
+                    <div class="col-md-4 mb-3">
+                        <div class="card">
+                            <div class="card-body">
+                                <h5 class="card-title">{{ user.username }}</h5>
+                                <p class="card-text">
+                                    <small class="text-muted">
+                                        Tài khoản: {{ user.role.title() }}
+                                    </small>
+                                </p>
+                                <a href="{{ url_for('main.user_schedules', user_id=user.id) }}" class="btn btn-primary">
+                                    <i class="fas fa-calendar-alt me-2"></i>
+                                    Xem lịch thuốc
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="text-center py-5">
+                    <i class="fas fa-users fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">Chưa có người dùng nào</h5>
+                    <p class="text-muted">Hệ thống chưa có người dùng để hiển thị lịch thuốc.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

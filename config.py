@@ -6,7 +6,7 @@ class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'super-secret-key-2024'
     
     # Cấu hình SQLAlchemy
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'mysql://root:@localhost/elder_project'
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'mysql://root:@localhost:3307/elder_project'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # Cấu hình JWT
@@ -26,4 +26,4 @@ class Config:
     
     # Cấu hình API
     API_KEY_REQUIRED = True
-    API_KEY = os.environ.get('API_KEY') or 'khóa-api-mặc-định'
+    API_KEY = os.environ.get('API_KEY') or 'my-secret-key-2025'

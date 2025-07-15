@@ -67,7 +67,7 @@ class Medicine(db.Model):
     notes = sa.Column(sa.Text)
     image = sa.Column(sa.String(200))
     user_id = sa.Column(sa.Integer, sa.ForeignKey('users.id'), nullable=False)
-    compartment_number = sa.Column(sa.Integer, nullable=False)  # 1-6
+    compartment_number = sa.Column(sa.Integer, nullable=False)  # 1-4
     quantity = sa.Column(sa.Integer, nullable=False, default=0)  # current quantity
     min_quantity = sa.Column(sa.Integer, nullable=False, default=5)  # alert threshold
     dosage = sa.Column(sa.Integer, nullable=False, default=1)  # pills per dose

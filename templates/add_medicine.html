@@ -30,9 +30,9 @@
                     </div>
 
                     <div class="mb-3">
-                        <label for="compartment_number" class="form-label">Ngăn chứa thuốc (1-6)</label>
+                        <label for="compartment_number" class="form-label">Ngăn chứa thuốc (1-4)</label>
                         <select class="form-control" id="compartment_number" name="compartment_number" required>
-                            {% for i in range(1, 7) %}
+                            {% for i in range(1, 5) %}
                             <option value="{{ i }}">Ngăn {{ i }}</option>
                             {% endfor %}
                         </select>

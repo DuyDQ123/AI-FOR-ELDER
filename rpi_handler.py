@@ -22,14 +22,12 @@ I2S_BCK = 12      # Bit Clock
 I2S_LRCK = 13     # Left-Right Clock (Word Select)
 I2S_DIN = 20      # Data In
 
-# Servo motor pins for each compartment (1-6)
+# Servo motor pins for each compartment (1-4)
 SERVO_PINS = {
-    1: 5,
-    2: 6,
-    3: 21, 
+    1: 12,
+    2: 13,
+    3: 18,
     4: 19,
-    5: 26,
-    6: 16
 }
 
 # Servo angles
@@ -216,7 +214,7 @@ class RaspberryPiHandler:
                         self._start_alert(schedules[0])
             except Exception as e:
                 print(f"Lỗi khi kiểm tra lịch: {e}")
-            time.sleep(60)  # Kiểm tra mỗi phút
+            time.sleep(30)  # Kiểm tra mỗi 30 giây để không bị lỡ giờ
             
     def _start_alert(self, schedule):
         """Bắt đầu cảnh báo cho lịch uống thuốc"""
@@ -240,17 +238,8 @@ class RaspberryPiHandler:
         self.alert_thread.start()
         
     def _display_oled_message(self, message):
-        """Hiển thị thông báo trên màn hình OLED"""
-        image = Image.new('1', (OLED_WIDTH, OLED_HEIGHT))
-        draw = ImageDraw.Draw(image)
-        
-        y = 0
-        for line in message.split('\n'):
-            draw.text((0, y), line, font=self.font, fill=255)
-            y += 14
-            
-        self.oled.image(image)
-        self.oled.display()
+        """Hiển thị thông báo trên màn hình OLED (thay bằng print khi chưa có LCD)"""
+        print(f"[THÔNG BÁO]:\n{message}")
         
     def _clear_oled(self):
         """Xóa màn hình OLED"""
@@ -258,35 +247,11 @@ class RaspberryPiHandler:
         self.oled.display()
         
     def _play_alert_sound(self, medicine_name=None):
-        """Phát âm thanh và thông báo bằng giọng nói qua I2S"""
-        try:
-            # Set volume for I2S output
-            os.system(f'amixer -c 1 sset PCM {ALERT_VOLUME}%')
-            
-            if medicine_name:
-                # Tạo thông báo bằng giọng nói
-                message = f"Đã đến giờ uống thuốc {medicine_name}"
-                try:
-                    # Sử dụng Google TTS với output qua I2S
-                    from gtts import gTTS
-                    tts = gTTS(text=message, lang='vi')
-                    tts.save('/tmp/medicine_alert.mp3')
-                    os.system('mpg123 -a hw:1,0 /tmp/medicine_alert.mp3')  # hw:1,0 là I2S DAC
-                except:
-                    # Fallback to espeak with I2S
-                    os.system(f'espeak -vvi+f3 -s 130 "{message}" --stdout | aplay -D plughw:1,0')
-            
-            # Phát âm thanh nhắc nhở qua I2S
-            alert_sound = '/home/pi/medicine_reminder.wav'
-            if os.path.exists(alert_sound):
-                os.system(f'aplay -D plughw:1,0 {alert_sound}')
-            else:
-                # Tạo âm thanh beep thông qua sox và phát qua I2S
-                os.system('play -n -c1 synth 0.1 sine 1000 vol 0.5 > /dev/null 2>&1')
-                
-        except Exception as e:
-            print(f"Lỗi phát âm thanh qua I2S: {e}")
-            # Không có fallback vì chỉ dùng I2S audio
+        """Thông báo bằng print khi chưa có âm thanh"""
+        if medicine_name:
+            print(f"[CẢNH BÁO]: Đã đến giờ uống thuốc {medicine_name}")
+        else:
+            print("[CẢNH BÁO]: Đã đến giờ uống thuốc")
             
     def _alert_loop(self):
         """Vòng lặp phát cảnh báo định kỳ"""
@@ -383,15 +348,17 @@ class RaspberryPiHandler:
             medicine = response.json()
             compartment = medicine['compartment_number']
             
-            if not (1 <= compartment <= 6):
+            if not (1 <= compartment <= 4):
                 print(f"Số ngăn không hợp lệ: {compartment}")
                 return False
             
-            # Open compartment
-            self._set_servo_angle(compartment, SERVO_DISPENSE)
-            time.sleep(1)  # Wait for medicine to drop
+            print(f"Thả thuốc từ ngăn {compartment}")
             
-            # Close compartment
+            # Open compartment - quay servo 90 độ
+            self._set_servo_angle(compartment, SERVO_OPEN)
+            time.sleep(2)  # Đợi 2 giây như yêu cầu
+            
+            # Close compartment - về vị trí ban đầu
             self._set_servo_angle(compartment, SERVO_CLOSED)
             
             # Update medicine quantity on server

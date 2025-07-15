@@ -11,12 +11,22 @@
                 <form method="POST" action="{{ url_for('main.add_schedule') }}">
                     <div class="mb-3">
                         <label for="medicine_id" class="form-label">Chọn thuốc</label>
-                        <select class="form-select" id="medicine_id" name="medicine_id" required>
+                        <select class="form-select" id="medicine_id" name="medicine_id" required onchange="updateCompartmentInfo()">
                             <option value="">-- Chọn thuốc --</option>
                             {% for medicine in medicines %}
-                            <option value="{{ medicine.id }}">{{ medicine.name }}</option>
+                            <option value="{{ medicine.id }}" data-compartment="{{ medicine.compartment_number }}">
+                                {{ medicine.name }} (Ngăn {{ medicine.compartment_number }})
+                            </option>
                             {% endfor %}
                         </select>
+                    </div>
+                    
+                    <div class="mb-3" id="compartment_info" style="display: none;">
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i>
+                            <strong>Thông tin ngăn chứa:</strong>
+                            <span id="compartment_text"></span>
+                        </div>
                     </div>
                     
                     <div class="mb-3">
@@ -74,4 +84,22 @@
         </div>
     </div>
 </div>
+
+<script>
+function updateCompartmentInfo() {
+    const select = document.getElementById('medicine_id');
+    const compartmentInfo = document.getElementById('compartment_info');
+    const compartmentText = document.getElementById('compartment_text');
+    
+    if (select.value) {
+        const selectedOption = select.options[select.selectedIndex];
+        const compartment = selectedOption.dataset.compartment;
+        
+        compartmentText.textContent = `Thuốc này sẽ được thả từ ngăn ${compartment}`;
+        compartmentInfo.style.display = 'block';
+    } else {
+        compartmentInfo.style.display = 'none';
+    }
+}
+</script>
 {% endblock %}

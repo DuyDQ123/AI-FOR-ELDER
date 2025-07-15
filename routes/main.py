@@ -3,6 +3,7 @@ from flask_login import login_required, current_user
 from models import db, Medicine, Schedule, MedicineHistory, User, SystemConfig, AdminLog
 from datetime import datetime, timedelta
 from auth import require_api_key, admin_required, super_admin_required, user_active_required
+from werkzeug.security import generate_password_hash
 
 main = Blueprint('main', __name__)
 
@@ -39,9 +40,44 @@ def system_config():
 @super_admin_required
 def user_management():
     users = User.query.filter(User.role != 'super_admin').all()
-    return render_template('admin/user_management.html', users=users)
+    return render_template('admin/manage_users.html', users=users)
 
-@main.route('/admin/user/<int:user_id>', methods=['POST'])
+@main.route('/admin/create-user', methods=['POST'])
+@super_admin_required
+def create_user():
+    username = request.form.get('username')
+    password = request.form.get('password')
+    role = request.form.get('role', 'user')
+
+    if not username or not password:
+        return jsonify({'error': 'Missing username or password'}), 400
+
+    if role not in ['admin', 'user']:
+        return jsonify({'error': 'Invalid role'}), 400
+
+    new_user = User(
+        username=username,
+        password_hash=generate_password_hash(password),
+        role=role,
+        created_at=datetime.now()
+    )
+    db.session.add(new_user)
+    db.session.commit()
+
+    log = AdminLog(
+        admin_id=current_user.id,
+        action='create_user',
+        target_type='user',
+        target_id=new_user.id,
+        details=f'Created user {username} with role {role}',
+        timestamp=datetime.now()
+    )
+    db.session.add(log)
+    db.session.commit()
+
+    return jsonify({'success': True, 'user_id': new_user.id})
+
+@main.route('/admin/manage_user/<int:user_id>', methods=['POST'])
 @super_admin_required
 def manage_user(user_id):
     user = User.query.get_or_404(user_id)
@@ -49,12 +85,15 @@ def manage_user(user_id):
     
     if action == 'lock':
         user.status = 'locked'
+        db.session.commit()
     elif action == 'unlock':
         user.status = 'active'
+        db.session.commit()
     elif action == 'change_role':
         new_role = request.form.get('role')
         if new_role in ['admin', 'user']:
             user.role = new_role
+            db.session.commit()
             
     log = AdminLog(
         admin_id=current_user.id,
@@ -73,7 +112,7 @@ def manage_user(user_id):
 @admin_required
 def admin_logs():
     logs = AdminLog.query.order_by(AdminLog.timestamp.desc()).limit(100).all()
-    return render_template('admin/logs.html', logs=logs)
+    return render_template('admin/logs.html', logs=logs, User=User)
 
 # Admin Routes
 @main.route('/admin/users')
@@ -106,8 +145,15 @@ def reset_user_password(user_id):
 @main.route('/admin/schedules')
 @admin_required
 def manage_schedules():
-    schedules = Schedule.query.all()
-    return render_template('admin/manage_schedules.html', schedules=schedules)
+    users = User.query.filter_by(role='user').all()
+    return render_template('admin/manage_schedules.html', users=users)
+
+@main.route('/admin/schedules/<int:user_id>')
+@admin_required
+def user_schedules(user_id):
+    user = User.query.get_or_404(user_id)
+    schedules = Schedule.query.filter_by(user_id=user_id).all()
+    return render_template('admin/user_schedules.html', user=user, schedules=schedules)
 
 
 @main.route('/')
@@ -128,9 +174,16 @@ def index():
 @login_required
 def add_medicine():
     if request.method == 'POST':
-        # Check if compartment is already in use
+        compartment_number = int(request.form['compartment_number'])
+        
+        # Check if compartment number is valid (1-4)
+        if compartment_number not in [1, 2, 3, 4]:
+            return "Số ngăn không hợp lệ. Chỉ có 4 ngăn (1-4)", 400
+        
+        # Check if compartment is already in use by this user
         existing = Medicine.query.filter_by(
-            compartment_number=int(request.form['compartment_number'])
+            compartment_number=compartment_number,
+            user_id=current_user.id
         ).first()
         
         if existing:
@@ -141,7 +194,7 @@ def add_medicine():
             description=request.form['description'],
             notes=request.form['notes'],
             image=request.form['image'] if 'image' in request.form else '',
-            compartment_number=int(request.form['compartment_number']),
+            compartment_number=compartment_number,
             quantity=int(request.form['quantity']),
             min_quantity=int(request.form['min_quantity']),
             dosage=int(request.form['dosage']),
@@ -267,12 +320,14 @@ def get_current_schedules(user_id):
         schedule_time = datetime.strptime(schedule.time, '%H:%M').time()
         schedule_datetime = datetime.combine(current_time.date(), schedule_time)
         
-        if abs((schedule_datetime - current_time).total_seconds()) <= 300:
+        if abs((schedule_datetime - current_time).total_seconds()) <= 60:
             medicine = Medicine.query.get(schedule.medicine_id)
             if medicine:
                 current_schedules.append({
                     'schedule_id': schedule.id,
+                    'medicine_id': medicine.id,
                     'medicine_name': medicine.name,
+                    'compartment_number': medicine.compartment_number,
                     'time': schedule.time,
                     'notes': medicine.notes
                 })

@@ -100,6 +100,7 @@ def init_db():
         print("Database initialization completed successfully!")
         print("\nDefault accounts:")
         print("Super Admin - username: superadmin, password: superadmin123")
+        print("Note: Only administrators can create and assign user accounts.")
         print("Admin - username: admin, password: admin123")
         
     except Exception as e:

@@ -1,77 +1,92 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container">
-    <h2 class="mb-4">Nhật Ký Hoạt Động</h2>
-
-    <div class="card">
-        <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-hover">
-                    <thead>
-                        <tr>
-                            <th>Thời gian</th>
-                            <th>Admin</th>
-                            <th>Hành động</th>
-                            <th>Đối tượng</th>
-                            <th>Chi tiết</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for log in logs %}
-                        <tr>
-                            <td>{{ log.timestamp.strftime('%d/%m/%Y %H:%M:%S') }}</td>
-                            <td>
-                                {% set admin = User.query.get(log.admin_id) %}
-                                {{ admin.username if admin else 'Unknown' }}
-                            </td>
-                            <td>
-                                {% if log.action == 'update_config' %}
-                                    <span class="badge bg-primary">Cập nhật cấu hình</span>
-                                {% elif log.action == 'lock' %}
-                                    <span class="badge bg-warning">Khóa tài khoản</span>
-                                {% elif log.action == 'unlock' %}
-                                    <span class="badge bg-success">Mở khóa tài khoản</span>
-                                {% elif log.action == 'change_role' %}
-                                    <span class="badge bg-info">Đổi quyền</span>
-                                {% elif log.action == 'reset_password' %}
-                                    <span class="badge bg-danger">Đặt lại mật khẩu</span>
-                                {% else %}
-                                    <span class="badge bg-secondary">{{ log.action }}</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if log.target_type == 'user' %}
-                                    {% set target_user = User.query.get(log.target_id) %}
-                                    User: {{ target_user.username if target_user else 'Deleted' }}
-                                {% elif log.target_type == 'system_config' %}
-                                    Cấu hình hệ thống
-                                {% else %}
-                                    {{ log.target_type }}: {{ log.target_id }}
-                                {% endif %}
-                            </td>
-                            <td>
-                                <button class="btn btn-sm btn-outline-primary" 
-                                        data-bs-toggle="tooltip" 
-                                        title="{{ log.details }}">
-                                    Chi tiết
-                                </button>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <h2 class="mb-4">Nhật Ký Hoạt Động</h2>
+            
+            {% if logs %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Thời gian</th>
+                                <th>Admin</th>
+                                <th>Hành động</th>
+                                <th>Đối tượng</th>
+                                <th>Chi tiết</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for log in logs %}
+                            {% set admin = User.query.get(log.admin_id) %}
+                            <tr>
+                                <td>
+                                    <div>{{ log.timestamp.strftime('%d/%m/%Y') }}</div>
+                                    <small class="text-muted">{{ log.timestamp.strftime('%H:%M:%S') }}</small>
+                                </td>
+                                <td>
+                                    <strong>{{ admin.username if admin else 'Unknown' }}</strong>
+                                </td>
+                                <td>
+                                    {% if log.action == 'update_config' %}
+                                        <span class="badge bg-primary">Cập nhật cấu hình</span>
+                                    {% elif log.action == 'lock' %}
+                                        <span class="badge bg-warning">Khóa tài khoản</span>
+                                    {% elif log.action == 'unlock' %}
+                                        <span class="badge bg-success">Mở khóa tài khoản</span>
+                                    {% elif log.action == 'change_role' %}
+                                        <span class="badge bg-info">Đổi quyền</span>
+                                    {% elif log.action == 'reset_password' %}
+                                        <span class="badge bg-danger">Đặt lại mật khẩu</span>
+                                    {% elif log.action == 'create_user' %}
+                                        <span class="badge bg-success">Tạo tài khoản</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">{{ log.action }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if log.target_type == 'user' %}
+                                        {% set target_user = User.query.get(log.target_id) %}
+                                        <strong>{{ target_user.username if target_user else 'Tài khoản đã xóa' }}</strong>
+                                    {% elif log.target_type == 'system_config' %}
+                                        <em>Cấu hình hệ thống</em>
+                                    {% else %}
+                                        {{ log.target_type }}: {{ log.target_id }}
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary"
+                                            type="button"
+                                            data-bs-toggle="popover"
+                                            data-bs-content="{{ log.details }}"
+                                            title="Chi tiết">
+                                        Xem
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="text-center py-5">
+                    <i class="fas fa-history fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">Chưa có hoạt động nào</h5>
+                    <p class="text-muted">Hệ thống chưa ghi nhận hoạt động quản trị nào.</p>
+                </div>
+            {% endif %}
         </div>
     </div>
 </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Khởi tạo tooltips
-    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    var tooltipList = tooltipTriggerList.map(function(tooltipTriggerEl) {
-        return new bootstrap.Tooltip(tooltipTriggerEl);
+    // Initialize popovers
+    var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
+    var popoverList = popoverTriggerList.map(function(popoverTriggerEl) {
+        return new bootstrap.Popover(popoverTriggerEl);
     });
 });
 </script>
