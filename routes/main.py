@@ -187,7 +187,7 @@ def add_medicine():
         ).first()
         
         if existing:
-            return "Ngăn này đã được sử dụng", 400
+            return f"Ngăn {compartment_number} đã được sử dụng cho thuốc '{existing.name}'. Vui lòng chọn ngăn khác hoặc xóa thuốc cũ trước.", 400
             
         new_medicine = Medicine(
             name=request.form['name'],
@@ -201,20 +201,32 @@ def add_medicine():
             expiry_date=datetime.strptime(request.form['expiry_date'], '%Y-%m-%d').date() if request.form['expiry_date'] else None,
             user_id=current_user.id
         )
-        db.session.add(new_medicine)
-        db.session.commit()
-        return redirect(url_for('main.index'))
+        
+        try:
+            db.session.add(new_medicine)
+            db.session.commit()
+            return redirect(url_for('main.index'))
+        except Exception as e:
+            db.session.rollback()
+            # Handle specific constraint violation
+            if 'medicines_unique_compartment' in str(e):
+                return f"Ngăn {compartment_number} đã được sử dụng. Vui lòng chọn ngăn khác.", 400
+            else:
+                return f"Lỗi khi thêm thuốc: {str(e)}", 500
+                
     return render_template('add_medicine.html')
 
 @main.route('/add_schedule', methods=['GET', 'POST'])
 @login_required
 def add_schedule():
     if request.method == 'POST':
+        import json
+        days_list = request.form.getlist('days[]')
         new_schedule = Schedule(
             medicine_id=int(request.form['medicine_id']),
             user_id=current_user.id,
             time=request.form['time'],
-            days=request.form.getlist('days[]'),
+            days=json.dumps(days_list),  # Convert to JSON string
             period=request.form['period'],
             active=True
         )
@@ -237,6 +249,13 @@ def check_schedule():
     schedules = get_current_schedules(current_user.id)
     return jsonify(schedules)
 
+@main.route('/api/check_schedule_by_user/<int:user_id>', methods=['GET'])
+@require_api_key
+def check_schedule_by_user(user_id):
+    # API cho Raspberry Pi - chi can API key, khong can dang nhap
+    schedules = get_current_schedules(user_id)
+    return jsonify(schedules)
+
 @main.route('/api/confirm_medicine', methods=['POST'])
 @login_required
 @require_api_key
@@ -245,6 +264,29 @@ def confirm_medicine():
     schedule = Schedule.query.get_or_404(schedule_id)
     
     if schedule.user_id != current_user.id:
+        return jsonify({'error': 'Không có quyền truy cập'}), 403
+    
+    history_entry = MedicineHistory(
+        schedule_id=schedule_id,
+        timestamp=datetime.now(),
+        status='taken'
+    )
+    db.session.add(history_entry)
+    db.session.commit()
+    
+    return jsonify({'success': True})
+
+@main.route('/api/confirm_medicine_by_user', methods=['POST'])
+@require_api_key
+def confirm_medicine_by_user():
+    # API cho Raspberry Pi - chi can API key, khong can dang nhap
+    schedule_id = request.json.get('schedule_id')
+    user_id = request.json.get('user_id')
+    
+    schedule = Schedule.query.get_or_404(schedule_id)
+    
+    # Kiem tra xem schedule co phai cua user nay khong
+    if schedule.user_id != user_id:
         return jsonify({'error': 'Không có quyền truy cập'}), 403
     
     history_entry = MedicineHistory(
@@ -310,6 +352,18 @@ def verify_compartment():
 
 def get_current_schedules(user_id):
     current_time = datetime.now()
+    current_weekday = current_time.weekday()  # 0=Monday, 6=Sunday
+    weekday_mapping = {
+        0: 'monday',
+        1: 'tuesday',
+        2: 'wednesday',
+        3: 'thursday',
+        4: 'friday',
+        5: 'saturday',
+        6: 'sunday'
+    }
+    current_day = weekday_mapping[current_weekday]
+    
     today_schedules = Schedule.query.filter_by(
         user_id=user_id,
         active=True
@@ -317,10 +371,36 @@ def get_current_schedules(user_id):
     
     current_schedules = []
     for schedule in today_schedules:
+        # Kiem tra xem hom nay co trong danh sach ngay khong
+        import json
+        try:
+            schedule_days = json.loads(schedule.days) if isinstance(schedule.days, str) else schedule.days
+        except:
+            schedule_days = []
+            
+        if current_day not in schedule_days:
+            continue
+            
         schedule_time = datetime.strptime(schedule.time, '%H:%M').time()
         schedule_datetime = datetime.combine(current_time.date(), schedule_time)
         
-        if abs((schedule_datetime - current_time).total_seconds()) <= 60:
+        # Kiem tra xem da uong chua trong ngay hom nay
+        today_start = datetime.combine(current_time.date(), datetime.min.time())
+        today_end = datetime.combine(current_time.date(), datetime.max.time())
+        
+        existing_history = MedicineHistory.query.filter(
+            MedicineHistory.schedule_id == schedule.id,
+            MedicineHistory.timestamp >= today_start,
+            MedicineHistory.timestamp <= today_end,
+            MedicineHistory.status == 'taken'
+        ).first()
+        
+        # Neu da uong roi thi khong hien thi nua
+        if existing_history:
+            continue
+        
+        # Kiem tra thoi gian (trong vong 2 phut)
+        if abs((schedule_datetime - current_time).total_seconds()) <= 120:
             medicine = Medicine.query.get(schedule.medicine_id)
             if medicine:
                 current_schedules.append({
@@ -329,6 +409,7 @@ def get_current_schedules(user_id):
                     'medicine_name': medicine.name,
                     'compartment_number': medicine.compartment_number,
                     'time': schedule.time,
+                    'dosage': medicine.dosage,
                     'notes': medicine.notes
                 })
     

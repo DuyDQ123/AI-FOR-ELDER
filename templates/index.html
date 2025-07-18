@@ -19,6 +19,24 @@
                                         <div>
                                             <h5 class="mb-1">{{ medicine.name }}</h5>
                                             <p class="mb-1">Thời gian: {{ schedule.time }}</p>
+                                            <p class="mb-1">Ngăn: {{ medicine.compartment_number }}</p>
+                                            <p class="mb-1">Ngày:
+                                                {% if schedule.days %}
+                                                    {% set days_list = schedule.days if schedule.days is not string else schedule.days|from_json %}
+                                                    {% set day_names = {
+                                                        'monday': 'Thứ 2',
+                                                        'tuesday': 'Thứ 3',
+                                                        'wednesday': 'Thứ 4',
+                                                        'thursday': 'Thứ 5',
+                                                        'friday': 'Thứ 6',
+                                                        'saturday': 'Thứ 7',
+                                                        'sunday': 'Chủ nhật'
+                                                    } %}
+                                                    {% for day in days_list %}
+                                                        {{ day_names[day] }}{% if not loop.last %}, {% endif %}
+                                                    {% endfor %}
+                                                {% endif %}
+                                            </p>
                                             <small>{{ medicine.notes }}</small>
                                         </div>
                                         <div>

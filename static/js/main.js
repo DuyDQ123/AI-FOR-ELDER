@@ -84,25 +84,114 @@ checkMedicineSchedule(); // Kiểm tra ngay khi tải trang
 
 // Xác nhận đã uống thuốc
 function confirmMedicineTaken(scheduleId) {
-    fetch('/confirm_medicine', {
+    // Disable nút ngay lập tức để tránh click nhiều lần
+    const button = document.querySelector(`[data-schedule-id="${scheduleId}"]`);
+    button.disabled = true;
+    button.classList.remove('btn-success');
+    button.classList.add('btn-secondary');
+    button.textContent = 'Đang xử lý...';
+    
+    console.log('Confirming medicine for schedule ID:', scheduleId);
+    
+    fetch('/api/confirm_medicine', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
+            'X-API-Key': 'my-secret-key-2025'
         },
-        body: JSON.stringify({ scheduleId: scheduleId })
+        body: JSON.stringify({ schedule_id: scheduleId })
     })
-    .then(response => response.json())
+    .then(response => {
+        console.log('Response status:', response.status);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
     .then(data => {
+        console.log('Response data:', data);
         if (data.success) {
-            // Cập nhật UI
-            const button = document.querySelector(`[data-schedule-id="${scheduleId}"]`);
-            button.classList.remove('btn-success');
-            button.classList.add('btn-secondary');
+            // Cập nhật UI thành công
+            button.classList.remove('btn-secondary');
+            button.classList.add('btn-success');
             button.textContent = 'Đã uống';
             button.disabled = true;
+            
+            // Hiển thị thông báo thành công
+            showSuccessMessage('Đã xác nhận uống thuốc!');
+            
+            // Reload trang sau 2 giây để cập nhật danh sách
+            setTimeout(() => {
+                location.reload();
+            }, 2000);
+        } else {
+            // Khôi phục nút nếu thất bại
+            button.classList.remove('btn-secondary');
+            button.classList.add('btn-success');
+            button.textContent = 'Đã uống';
+            button.disabled = false;
+            
+            showErrorMessage('Lỗi khi xác nhận uống thuốc: ' + (data.error || 'Unknown error'));
         }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        
+        // Khôi phục nút nếu có lỗi
+        button.classList.remove('btn-secondary');
+        button.classList.add('btn-success');
+        button.textContent = 'Đã uống';
+        button.disabled = false;
+        
+        showErrorMessage('Lỗi kết nối: ' + error.message);
     });
 }
+
+// Hiển thị thông báo thành công
+function showSuccessMessage(message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = 'alert alert-success alert-dismissible fade show custom-alert';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.querySelector('.alert-container').appendChild(alertDiv);
+    
+    // Auto hide after 3 seconds
+    setTimeout(() => {
+        alertDiv.classList.remove('show');
+        setTimeout(() => alertDiv.remove(), 500);
+    }, 3000);
+}
+
+// Hiển thị thông báo lỗi
+function showErrorMessage(message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = 'alert alert-danger alert-dismissible fade show custom-alert';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.querySelector('.alert-container').appendChild(alertDiv);
+    
+    // Auto hide after 3 seconds
+    setTimeout(() => {
+        alertDiv.classList.remove('show');
+        setTimeout(() => alertDiv.remove(), 500);
+    }, 3000);
+}
+
+// Thêm event listener cho các nút "Đã uống"
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.confirm-medicine').forEach(button => {
+        button.addEventListener('click', function() {
+            const scheduleId = this.getAttribute('data-schedule-id');
+            confirmMedicineTaken(scheduleId);
+        });
+    });
+});
 
 // Xử lý form thêm thuốc
 if (document.querySelector('#addMedicineForm')) {

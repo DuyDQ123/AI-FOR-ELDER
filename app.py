@@ -3,6 +3,7 @@ from flask_login import login_required, current_user
 from datetime import datetime
 import platform
 import os
+import json
 
 from config import Config
 from models import db
@@ -17,6 +18,16 @@ app.config.from_object(Config)
 # Khởi tạo các extension
 db.init_app(app)
 init_login_manager(app)
+
+# Thêm filter để parse JSON trong template
+@app.template_filter('from_json')
+def from_json_filter(value):
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except:
+            return []
+    return value if isinstance(value, list) else []
 
 # Đăng ký blueprints
 app.register_blueprint(auth, url_prefix='/auth')

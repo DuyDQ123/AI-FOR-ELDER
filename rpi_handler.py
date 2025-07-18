@@ -12,7 +12,7 @@ from pyzbar.pyzbar import decode
 import numpy as np
 
 # Pin definitions for Raspberry Pi
-PIN_CONFIRM = 18    # Nút xác nhận uống thuốc
+PIN_CONFIRM = 16    # Nút xác nhận uống thuốc
 PIN_NEXT = 23      # Nút chuyển thuốc tiếp theo
 PIN_LIST = 17      # Nút xem danh sách thuốc
 PIN_SETTINGS = 27  # Nút cài đặt
@@ -347,6 +347,7 @@ class RaspberryPiHandler:
                 
             medicine = response.json()
             compartment = medicine['compartment_number']
+            medicines_in_compartment = medicine.get('medicines_in_compartment', [])
             
             if not (1 <= compartment <= 4):
                 print(f"Số ngăn không hợp lệ: {compartment}")
@@ -362,11 +363,12 @@ class RaspberryPiHandler:
             self._set_servo_angle(compartment, SERVO_CLOSED)
             
             # Update medicine quantity on server
-            requests.post(f"{self.server_url}/api/update_quantity",
-                        json={
-                            'medicine_id': schedule['medicine_id'],
-                            'quantity_change': -medicine['dosage']
-                        })
+            for med in medicines_in_compartment:
+                requests.post(f"{self.server_url}/api/update_quantity",
+                    json={
+                        'medicine_id': med['id'],
+                        'quantity_change': -med['dosage']
+                    })
             
             return True
             

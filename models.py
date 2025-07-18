@@ -68,11 +68,18 @@ class Medicine(db.Model):
     image = sa.Column(sa.String(200))
     user_id = sa.Column(sa.Integer, sa.ForeignKey('users.id'), nullable=False)
     compartment_number = sa.Column(sa.Integer, nullable=False)  # 1-4
+    medicines_in_compartment = sa.Column(sa.JSON, nullable=True)  # JSON to store multiple medicines and their quantities
     quantity = sa.Column(sa.Integer, nullable=False, default=0)  # current quantity
     min_quantity = sa.Column(sa.Integer, nullable=False, default=5)  # alert threshold
     dosage = sa.Column(sa.Integer, nullable=False, default=1)  # pills per dose
     expiry_date = sa.Column(sa.Date, nullable=True)
     schedules = db.relationship('Schedule', backref='medicine', lazy=True)
+    
+    # Ràng buộc: mỗi user chỉ có thể sử dụng mỗi ngăn cho 1 loại thuốc
+    __table_args__ = (
+        sa.UniqueConstraint('user_id', 'compartment_number', name='medicines_unique_compartment'),
+        # Remove constraint as multiple medicines can now exist in a compartment
+    )
 
 class Schedule(db.Model):
     __tablename__ = 'schedules'
