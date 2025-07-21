@@ -31,7 +31,7 @@ class TestRaspberryPiHandler:
         print("=" * 60)
 
         GPIO.setmode(GPIO.BCM)
-        GPIO.setup(PIN_CONFIRM, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        GPIO.setup(PIN_CONFIRM, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
 
         self.servos = {}
         print(f"Initializing {len(SERVO_PINS)} medicine compartments:")

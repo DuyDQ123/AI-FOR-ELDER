@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, jsonify
 from flask_login import login_required, current_user
+from flask import flash
 from models import db, Medicine, Schedule, MedicineHistory, User, SystemConfig, AdminLog
 from datetime import datetime, timedelta
 from auth import require_api_key, admin_required, super_admin_required, user_active_required
@@ -168,7 +169,39 @@ def index():
     else:
         schedules = Schedule.query.filter_by(user_id=current_user.id).all()
         medicines = Medicine.query.filter_by(user_id=current_user.id).all()
+        @main.route('/delete_schedule/<int:schedule_id>', methods=['POST'])
+        @login_required
+        def delete_schedule(schedule_id):
+            """Delete a specific schedule for the logged-in user."""
+            schedule = Schedule.query.get_or_404(schedule_id)
+            if schedule.user_id != current_user.id:
+                return jsonify({'error': 'Unauthorized access'}), 403
+        
+            # Remove associated medicine history entries before deleting the schedule
+            MedicineHistory.query.filter_by(schedule_id=schedule.id).delete()
+            db.session.delete(schedule)
+            db.session.commit()
+            flash('Schedule deleted successfully.', 'success')
+            return redirect(url_for('main.index'))
+        
+        print(f"Rendering index with {len(medicines)} medicines and {len(schedules)} schedules.")
         return render_template('index.html', medicines=medicines, schedules=schedules)
+
+@main.route('/delete_schedule/<int:schedule_id>', methods=['POST'])
+@login_required
+def delete_schedule(schedule_id):
+    """Delete a specific schedule for the logged-in user."""
+    print(f"Attempting to delete schedule with ID: {schedule_id} for user ID: {current_user.id}")
+    schedule = Schedule.query.get_or_404(schedule_id)
+    if schedule.user_id != current_user.id:
+        print("Unauthorized access attempt.")
+        return jsonify({'error': 'Unauthorized access'}), 403
+
+    db.session.delete(schedule)
+    db.session.commit()
+    print("Schedule deleted successfully.")
+    flash('Schedule deleted successfully.', 'success')
+    return redirect(url_for('main.index'))
 
 @main.route('/add_medicine', methods=['GET', 'POST'])
 @login_required

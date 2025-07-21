@@ -14,13 +14,13 @@
                     {% for schedule in schedules %}
                         {% for medicine in medicines %}
                             {% if medicine.id == schedule.medicine_id %}
-                                <div class="list-group-item">
+                                <div class="list-group-item schedule-item">
                                     <div class="d-flex justify-content-between align-items-center">
-                                        <div>
+                                        <div class="flex-grow-1">
                                             <h5 class="mb-1">{{ medicine.name }}</h5>
-                                            <p class="mb-1">Thời gian: {{ schedule.time }}</p>
-                                            <p class="mb-1">Ngăn: {{ medicine.compartment_number }}</p>
-                                            <p class="mb-1">Ngày:
+                                            <p class="mb-1"><i class="fas fa-clock text-primary"></i> Thời gian: {{ schedule.time }}</p>
+                                            <p class="mb-1"><i class="fas fa-box text-info"></i> Ngăn: {{ medicine.compartment_number }}</p>
+                                            <p class="mb-1"><i class="fas fa-calendar text-success"></i> Ngày:
                                                 {% if schedule.days %}
                                                     {% set days_list = schedule.days if schedule.days is not string else schedule.days|from_json %}
                                                     {% set day_names = {
@@ -37,10 +37,22 @@
                                                     {% endfor %}
                                                 {% endif %}
                                             </p>
-                                            <small>{{ medicine.notes }}</small>
+                                            {% if medicine.notes %}
+                                                <small class="text-muted"><i class="fas fa-sticky-note"></i> {{ medicine.notes }}</small>
+                                            {% endif %}
                                         </div>
-                                        <div>
-                                            <button class="btn btn-success btn-sm confirm-medicine" data-schedule-id="{{ schedule.id }}">Đã uống</button>
+                                        <div class="schedule-actions">
+                                            <button class="btn btn-success btn-sm confirm-medicine" data-schedule-id="{{ schedule.id }}" title="Đánh dấu đã uống thuốc">
+                                                <i class="fas fa-check"></i> Đã uống
+                                            </button>
+                                            <form method="POST" action="{{ url_for('main.delete_schedule', schedule_id=schedule.id) }}" class="d-inline">
+                                                <button class="btn btn-outline-danger btn-sm" type="submit"
+                                                        onclick="return confirm('Bạn có chắc muốn xóa lịch uống thuốc này không? nếu xoá đi thì lịch sử uống thuốc dựa trên nó cũng sẽ bị xoá')"
+                                                        {% if not current_user.is_authenticated %}disabled{% endif %}
+                                                        title="Xóa lịch uống thuốc">
+                                                    <i class="fas fa-trash"></i> Xoá
+                                                </button>
+                                            </form>
                                         </div>
                                     </div>
                                 </div>
