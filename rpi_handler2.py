@@ -12,11 +12,11 @@ SERVO_PINS = {
     4: 19,
 }
 PIN_CONFIRM = 16  # Confirmation button GPIO (changed from 18 to avoid conflict with servo)
-
+PIN_INFO = 23  # GPIO pin for the "INFO" button
 SERVO_CLOSED = 0
 SERVO_OPEN = 90
 
-SERVER_URL = "http://localhost:5000"
+SERVER_URL = "http://192.168.1.159:5000"
 API_KEY = "my-secret-key-2025"
 
 # User ID - change according to the specific user
@@ -32,6 +32,8 @@ class TestRaspberryPiHandler:
 
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(PIN_CONFIRM, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+        GPIO.setup(PIN_INFO, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+        GPIO.add_event_detect(PIN_INFO, GPIO.FALLING, callback=self.info_callback, bouncetime=300)
 
         self.servos = {}
         print(f"Initializing {len(SERVO_PINS)} medicine compartments:")
@@ -175,6 +177,20 @@ class TestRaspberryPiHandler:
 
                     if response.status_code == 200:
                         print("Confirmation successfully sent to server!")
+                        pi_flag_data = {
+                            "schedule_id": self.current_schedule_id,
+                            "user_id": USER_ID,
+                            "pi_button_flag": True  
+                        }
+                        
+                        pi_response = requests.post(f"{SERVER_URL}/api/confirm_pi_button",
+                                                   headers=headers, json=pi_flag_data)
+                        
+                        if pi_response.status_code == 200:
+                            print("Pi button flag sent to server for ESP32 sync!")
+                        else:
+                            print(f"Error sending Pi button flag: {pi_response.status_code}")
+                            
                     else:
                         print(f"Error sending confirmation to server: {response.status_code}")
 
@@ -190,6 +206,21 @@ class TestRaspberryPiHandler:
             print("System returned to standby...")
         else:
             print("No pending medicine reminder to confirm!")
+        
+    def info_callback(self, channel):
+            print("INFO button pressed!")
+            try:
+                headers = {"X-API-Key": API_KEY, "Content-Type": "application/json"}
+                data = {"user_id": USER_ID, "info_flag": True}  # Add a flag for the INFO button
+        
+                response = requests.post(f"{SERVER_URL}/api/trigger_info_display", headers=headers, json=data)
+        
+                if response.status_code == 200:
+                    print("INFO flag successfully sent to server!")
+                else:
+                    print(f"Error sending INFO flag: {response.status_code}")
+            except Exception as e:
+                print(f"Error handling INFO button press: {e}")
 
     def cleanup(self):
         for servo in self.servos.values():

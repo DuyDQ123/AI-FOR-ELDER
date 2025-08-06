@@ -16,6 +16,13 @@ class User(UserMixin, db.Model):
     user_type = sa.Column(sa.String(20), nullable=True)  # patient, caregiver
     status = sa.Column(sa.String(20), nullable=False, default='active')  # active, locked
     created_by = sa.Column(sa.Integer, sa.ForeignKey('users.id'), nullable=True)
+    
+    # Thêm fields cho ESP32 display
+    full_name = sa.Column(sa.String(100), nullable=True)  # Tên đầy đủ
+    age = sa.Column(sa.Integer, nullable=True)  # Tuổi
+    phone = sa.Column(sa.String(20), nullable=True)  # Số điện thoại
+    address = sa.Column(sa.Text, nullable=True)  # Địa chỉ
+    created_at = sa.Column(sa.DateTime, nullable=True)  # Ngày tạo
     medicines = db.relationship('Medicine', backref='user', lazy=True)
     schedules = db.relationship('Schedule', backref='user', lazy=True)
 

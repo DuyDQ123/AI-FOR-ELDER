@@ -332,6 +332,89 @@ def confirm_medicine_by_user():
     
     return jsonify({'success': True})
 
+@main.route('/api/trigger_info_display', methods=['POST'])
+@require_api_key
+def trigger_info_display():
+    """API endpoint to handle INFO button press and notify ESP32"""
+    user_id = request.json.get('user_id')
+    info_flag = request.json.get('info_flag')
+
+    if not user_id or not info_flag:
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    # Log the INFO flag for ESP32 to detect
+    try:
+        log_entry = AdminLog(
+            admin_id=user_id,
+            action='info_flag',
+            target_type='user',
+            target_id=user_id,
+            details='INFO button pressed',
+            timestamp=datetime.now()
+        )
+        db.session.add(log_entry)
+        db.session.commit()
+
+        return jsonify({'success': True, 'message': 'INFO flag logged successfully'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@main.route('/api/check_info_flag/<int:user_id>', methods=['GET'])
+@require_api_key
+def check_info_flag(user_id):
+    """API endpoint for ESP32 to check if INFO button was pressed"""
+    # Tìm INFO flag gần nhất trong vòng 1 phút
+    from datetime import timedelta
+    recent_time = datetime.now() - timedelta(minutes=2)
+    
+    recent_info_flag = AdminLog.query.filter(
+        AdminLog.target_id == user_id,
+        AdminLog.action == 'info_flag',
+        AdminLog.timestamp >= recent_time
+    ).order_by(AdminLog.timestamp.desc()).first()
+    
+    if recent_info_flag:
+        return jsonify({
+            'info_flag_detected': True,
+            'timestamp': recent_info_flag.timestamp.isoformat(),
+            'flag_id': recent_info_flag.id
+        })
+    else:
+        return jsonify({'info_flag_detected': False})
+
+@main.route('/api/clear_info_flag/<int:flag_id>', methods=['POST'])
+@require_api_key
+def clear_info_flag(flag_id):
+    """API để ESP32 xóa INFO flag sau khi đã hiển thị"""
+    flag = AdminLog.query.get_or_404(flag_id)
+    # Đổi action để không còn được detect nữa
+    flag.action = 'info_flag_displayed'
+    db.session.commit()
+    
+    return jsonify({'success': True})
+
+    """API đặc biệt để Pi button gửi flag cho ESP32 sync"""
+    schedule_id = request.json.get('schedule_id')
+    user_id = request.json.get('user_id')
+    
+    schedule = Schedule.query.get_or_404(schedule_id)
+    
+    # Kiểm tra xem schedule có phải của user này không
+    if schedule.user_id != user_id:
+        return jsonify({'error': 'Không có quyền truy cập'}), 403
+    
+    # Tạo history entry với flag đặc biệt cho Pi button
+    pi_history_entry = MedicineHistory(
+        schedule_id=schedule_id,
+        timestamp=datetime.now(),
+        status='taken',
+        notes='pi_button_confirmed'  # Flag đặc biệt để ESP32 detect
+    )
+    db.session.add(pi_history_entry)
+    db.session.commit()
+    
+    return jsonify({'success': True, 'pi_confirmation_id': pi_history_entry.id})
+
 @main.route('/api/medicine/<int:medicine_id>', methods=['GET'])
 @require_api_key
 def get_medicine(medicine_id):
@@ -382,6 +465,79 @@ def verify_compartment():
         return jsonify({'error': 'Compartment mismatch'}), 400
         
     return jsonify({'success': True})
+
+@main.route('/api/user_profile/<int:user_id>', methods=['GET'])
+@require_api_key
+def get_user_profile(user_id):
+    """API endpoint để ESP32 lấy user profile + thống kê tuần"""
+    user = User.query.get_or_404(user_id)
+    
+    # Tính thống kê tuần này
+    from datetime import timedelta
+    now = datetime.now()
+    week_start = now - timedelta(days=now.weekday())
+    week_end = week_start + timedelta(days=6)
+    
+    # Lấy lịch sử uống thuốc tuần này
+    week_history = MedicineHistory.query.join(Schedule).filter(
+        Schedule.user_id == user_id,
+        MedicineHistory.timestamp >= week_start,
+        MedicineHistory.timestamp <= week_end,
+        MedicineHistory.status == 'taken'
+    ).count()
+    
+    # Tổng số lịch thuốc active
+    total_schedules = Schedule.query.filter_by(user_id=user_id, active=True).count()
+    
+    # Compliance rate tuần này
+    expected_doses_week = total_schedules * 7  # 7 ngày
+    compliance_rate = (week_history / expected_doses_week * 100) if expected_doses_week > 0 else 0
+    
+    # Thuốc hôm nay
+    today_start = datetime.combine(now.date(), datetime.min.time())
+    today_end = datetime.combine(now.date(), datetime.max.time())
+    
+    taken_today = MedicineHistory.query.join(Schedule).filter(
+        Schedule.user_id == user_id,
+        MedicineHistory.timestamp >= today_start,
+        MedicineHistory.timestamp <= today_end,
+        MedicineHistory.status == 'taken'
+    ).count()
+    
+    # Lấy danh sách thuốc trong các ngăn
+    medicines = Medicine.query.filter_by(user_id=user_id).all()
+    medicine_list = []
+    for med in medicines:
+        medicine_list.append({
+            'name': med.name,
+            'compartment': med.compartment_number,
+            'quantity': med.quantity,
+            'low_stock': med.quantity <= med.min_quantity
+        })
+    
+    return jsonify({
+        'user_info': {
+            'id': user.id,
+            'username': user.username,
+            'full_name': user.full_name or user.username,
+            'age': user.age or 'N/A',
+            'email': user.email,
+            'phone': user.phone or 'N/A',
+            'user_type': user.user_type or 'patient'
+        },
+        'weekly_stats': {
+            'doses_taken': week_history,
+            'expected_doses': expected_doses_week,
+            'compliance_rate': round(compliance_rate, 1),
+            'taken_today': taken_today
+        },
+        'medicines': medicine_list,
+        'system_info': {
+            'total_medicines': len(medicine_list),
+            'low_stock_count': sum(1 for m in medicine_list if m['low_stock']),
+            'active_schedules': total_schedules
+        }
+    })
 
 def get_current_schedules(user_id):
     current_time = datetime.now()
@@ -466,3 +622,43 @@ def calculate_weekly_stats(user_id):
         'missed': missed,
         'compliance_rate': (taken / total_scheduled * 100) if total_scheduled > 0 else 0
     }
+
+@main.route('/api/check_confirmation_status/<int:user_id>', methods=['GET'])
+@require_api_key
+def check_confirmation_status(user_id):
+    """API endpoint để ESP32 kiểm tra trạng thái confirmation từ Pi button"""
+    # Tìm confirmation gần nhất trong vòng 5 phút
+    from datetime import timedelta
+    recent_time = datetime.now() - timedelta(minutes=5)
+    
+    recent_confirmation = MedicineHistory.query.join(Schedule).filter(
+        Schedule.user_id == user_id,
+        MedicineHistory.timestamp >= recent_time,
+        MedicineHistory.status == 'taken',
+        MedicineHistory.notes == 'pi_button_confirmed'  # Flag đặc biệt cho Pi button
+    ).order_by(MedicineHistory.timestamp.desc()).first()
+    
+    if recent_confirmation:
+        schedule = Schedule.query.get(recent_confirmation.schedule_id)
+        medicine = Medicine.query.get(schedule.medicine_id)
+        
+        return jsonify({
+            'confirmed': True,
+            'timestamp': recent_confirmation.timestamp.isoformat(),
+            'medicine_name': medicine.name,
+            'compartment_number': medicine.compartment_number,
+            'confirmation_id': recent_confirmation.id
+        })
+    else:
+        return jsonify({'confirmed': False})
+
+@main.route('/api/clear_confirmation/<int:confirmation_id>', methods=['POST'])
+@require_api_key
+def clear_confirmation(confirmation_id):
+    """API để ESP32 xóa confirmation sau khi đã hiển thị"""
+    confirmation = MedicineHistory.query.get_or_404(confirmation_id)
+    # Đổi notes để không còn được detect nữa
+    confirmation.notes = 'pi_button_confirmed_displayed'
+    db.session.commit()
+    
+    return jsonify({'success': True})
