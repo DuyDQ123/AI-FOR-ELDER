@@ -2,61 +2,233 @@
 
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-md-8">
+    <div class="col-md-10">
         <div class="card">
             <div class="card-header bg-primary text-white">
-                <h4 class="mb-0">Thông Tin Tài Khoản</h4>
+                <h4 class="mb-0"><i class="fas fa-user-circle"></i> Thông Tin Tài Khoản</h4>
             </div>
             <div class="card-body">
                 {% with messages = get_flashed_messages(with_categories=true) %}
                     {% if messages %}
                         {% for category, message in messages %}
-                            <div class="alert alert-{{ category }}">{{ message }}</div>
+                            <div class="alert alert-{{ 'danger' if category == 'error' else category }}">{{ message }}</div>
                         {% endfor %}
                     {% endif %}
                 {% endwith %}
                 
                 <form method="POST" action="{{ url_for('auth.profile') }}">
-                    <div class="mb-3">
-                        <label class="form-label">Tên đăng nhập</label>
-                        <input type="text" class="form-control" value="{{ current_user.username }}" readonly>
+                    <div class="row">
+                        <!-- Thông tin cơ bản -->
+                        <div class="col-md-6">
+                            <h5 class="mb-3 text-primary"><i class="fas fa-info-circle"></i> Thông Tin Cơ Bản</h5>
+                            
+                            <div class="mb-3">
+                                <label class="form-label"><i class="fas fa-user"></i> Tên đăng nhập</label>
+                                <input type="text" class="form-control" value="{{ current_user.username }}" readonly>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="full_name" class="form-label"><i class="fas fa-id-card"></i> Họ và tên</label>
+                                <input type="text" class="form-control" id="full_name" name="full_name" 
+                                       value="{{ current_user.full_name or '' }}" placeholder="Nhập họ và tên đầy đủ">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="age" class="form-label"><i class="fas fa-birthday-cake"></i> Tuổi</label>
+                                <input type="number" class="form-control" id="age" name="age" 
+                                       value="{{ current_user.age or '' }}" placeholder="Nhập tuổi" min="1" max="120">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="email" class="form-label"><i class="fas fa-envelope"></i> Email</label>
+                                <input type="email" class="form-control" id="email" name="email" 
+                                       value="{{ current_user.email }}" required placeholder="email@example.com">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="phone" class="form-label"><i class="fas fa-phone"></i> Số điện thoại</label>
+                                <input type="tel" class="form-control" id="phone" name="phone" 
+                                       value="{{ current_user.phone or '' }}" placeholder="0123456789">
+                            </div>
+                        </div>
+                        
+                        <!-- Thông tin bổ sung và vai trò -->
+                        <div class="col-md-6">
+                            <h5 class="mb-3 text-primary"><i class="fas fa-cogs"></i> Thông Tin Hệ Thống</h5>
+                            
+                            <div class="mb-3">
+                                <label class="form-label"><i class="fas fa-user-tag"></i> Vai trò</label>
+                                <input type="text" class="form-control" 
+                                       value="{% if current_user.role == 'user' %}Người dùng
+                                              {% elif current_user.role == 'admin' %}Quản trị viên  
+                                              {% elif current_user.role == 'super_admin' %}Quản trị viên cấp cao
+                                              {% else %}{{ current_user.role }}{% endif %}" readonly>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label"><i class="fas fa-heartbeat"></i> Loại người dùng</label>
+                                <input type="text" class="form-control" 
+                                       value="{% if current_user.user_type == 'patient' %}Bệnh nhân
+                                              {% elif current_user.user_type == 'caregiver' %}Người chăm sóc
+                                              {% else %}{{ current_user.user_type or 'Chưa xác định' }}{% endif %}" readonly>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label"><i class="fas fa-toggle-on"></i> Trạng thái</label>
+                                <input type="text" class="form-control" 
+                                       value="{% if current_user.status == 'active' %}Hoạt động
+                                              {% elif current_user.status == 'locked' %}Bị khóa
+                                              {% else %}{{ current_user.status }}{% endif %}" readonly>
+                            </div>
+                            
+                            {% if current_user.created_at %}
+                            <div class="mb-3">
+                                <label class="form-label"><i class="fas fa-calendar-plus"></i> Ngày tạo tài khoản</label>
+                                <input type="text" class="form-control" 
+                                       value="{{ current_user.created_at.strftime('%d/%m/%Y %H:%M') }}" readonly>
+                            </div>
+                            {% endif %}
+                            
+                            <div class="mb-3">
+                                <label for="address" class="form-label"><i class="fas fa-map-marker-alt"></i> Địa chỉ</label>
+                                <textarea class="form-control" id="address" name="address" rows="3" 
+                                          placeholder="Nhập địa chỉ chi tiết">{{ current_user.address or '' }}</textarea>
+                            </div>
+                        </div>
                     </div>
                     
-                    <div class="mb-3">
-                        <label for="email" class="form-label">Email</label>
-                        <input type="email" class="form-control" id="email" name="email" 
-                               value="{{ current_user.email }}" required>
+                    <hr class="my-4">
+                    
+                    <!-- Đổi mật khẩu -->
+                    <div class="row">
+                        <div class="col-md-12">
+                            <h5 class="mb-3 text-warning"><i class="fas fa-key"></i> Đổi Mật Khẩu</h5>
+                            <p class="text-muted">Để trống nếu không muốn thay đổi mật khẩu</p>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="current_password" class="form-label"><i class="fas fa-lock"></i> Mật khẩu hiện tại</label>
+                                <input type="password" class="form-control" id="current_password" 
+                                       name="current_password" placeholder="Nhập mật khẩu hiện tại">
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="new_password" class="form-label"><i class="fas fa-lock"></i> Mật khẩu mới</label>
+                                <input type="password" class="form-control" id="new_password" 
+                                       name="new_password" placeholder="Nhập mật khẩu mới">
+                            </div>
+                        </div>
                     </div>
                     
-                    <div class="mb-3">
-                        <label class="form-label">Vai trò</label>
-                        <input type="text" class="form-control" 
-                               value="{% if current_user.role == 'patient' %}Bệnh nhân
-                                      {% elif current_user.role == 'caregiver' %}Người chăm sóc
-                                      {% else %}Quản trị viên{% endif %}" readonly>
-                    </div>
-                    
-                    <hr>
-                    <h5 class="mb-3">Đổi Mật Khẩu</h5>
-                    
-                    <div class="mb-3">
-                        <label for="current_password" class="form-label">Mật khẩu hiện tại</label>
-                        <input type="password" class="form-control" id="current_password" 
-                               name="current_password">
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="new_password" class="form-label">Mật khẩu mới</label>
-                        <input type="password" class="form-control" id="new_password" 
-                               name="new_password">
-                    </div>
-                    
-                    <div class="d-grid">
-                        <button type="submit" class="btn btn-primary">Cập Nhật Thông Tin</button>
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+                        <a href="{{ url_for('main.index') }}" class="btn btn-secondary me-md-2">
+                            <i class="fas fa-arrow-left"></i> Quay lại
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Cập Nhật Thông Tin
+                        </button>
                     </div>
                 </form>
             </div>
         </div>
+        
+        <!-- Thống kê sử dụng thuốc (chỉ hiển thị cho user) -->
+        {% if current_user.role == 'user' %}
+        <div class="card mt-4">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="fas fa-chart-line"></i> Thống Kê Sử Dụng Thuốc</h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-md-3">
+                        <div class="card border-primary">
+                            <div class="card-body">
+                                <h4 class="text-primary">{{ current_user.medicines|length }}</h4>
+                                <p class="mb-0">Loại thuốc đang sử dụng</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card border-success">
+                            <div class="card-body">
+                                <h4 class="text-success">{{ current_user.schedules|length }}</h4>
+                                <p class="mb-0">Lịch uống thuốc active</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card border-warning">
+                            <div class="card-body">
+                                <h4 class="text-warning">
+                                    {{ current_user.medicines|selectattr('quantity', 'le', current_user.medicines|map(attribute='min_quantity')|first or 5)|list|length }}
+                                </h4>
+                                <p class="mb-0">Thuốc sắp hết</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card border-info">
+                            <div class="card-body">
+                                <h4 class="text-info">
+                                    {% set used_compartments = current_user.medicines|map(attribute='compartment_number')|list %}
+                                    {{ used_compartments|length }}/4
+                                </h4>
+                                <p class="mb-0">Ngăn đang sử dụng</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
+
+<style>
+.card {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    border: 1px solid rgba(0, 0, 0, 0.125);
+}
+
+.card-header {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.125);
+}
+
+.form-label {
+    font-weight: 600;
+    color: #495057;
+}
+
+.form-label i {
+    margin-right: 0.5rem;
+    color: #6c757d;
+}
+
+.text-primary {
+    color: #0d6efd !important;
+}
+
+.text-warning {
+    color: #ffc107 !important;
+}
+
+.alert {
+    border-radius: 0.375rem;
+}
+
+.btn {
+    border-radius: 0.375rem;
+}
+
+.card .card {
+    transition: transform 0.2s ease-in-out;
+}
+
+.card .card:hover {
+    transform: translateY(-2px);
+}
+</style>
 {% endblock %}

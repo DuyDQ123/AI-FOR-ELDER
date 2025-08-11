@@ -78,6 +78,87 @@ def create_user():
 
     return jsonify({'success': True, 'user_id': new_user.id})
 
+@main.route('/admin/create-user-full', methods=['POST'])
+@admin_required
+def create_user_full():
+    """Tạo tài khoản người dùng với đầy đủ thông tin"""
+    try:
+        # Lấy thông tin đăng nhập
+        username = request.form.get('username')
+        email = request.form.get('email')
+        password = request.form.get('password')
+        role = request.form.get('role', 'user')
+        user_type = request.form.get('user_type', 'patient')
+        
+        # Lấy thông tin cá nhân
+        full_name = request.form.get('full_name')
+        age = request.form.get('age')
+        phone = request.form.get('phone')
+        address = request.form.get('address')
+
+        # Validation
+        if not username or not email or not password:
+            flash('Vui lòng điền đầy đủ thông tin bắt buộc (tên đăng nhập, email, mật khẩu)', 'error')
+            return redirect(url_for('main.user_management'))
+
+        if len(password) < 6:
+            flash('Mật khẩu phải có ít nhất 6 ký tự', 'error')
+            return redirect(url_for('main.user_management'))
+
+        if role not in ['admin', 'user']:
+            flash('Vai trò không hợp lệ', 'error')
+            return redirect(url_for('main.user_management'))
+
+        # Kiểm tra trùng lặp
+        if User.query.filter_by(username=username).first():
+            flash('Tên đăng nhập đã tồn tại', 'error')
+            return redirect(url_for('main.user_management'))
+
+        if User.query.filter_by(email=email).first():
+            flash('Email đã được sử dụng', 'error')
+            return redirect(url_for('main.user_management'))
+
+        # Tạo user mới
+        new_user = User(
+            username=username,
+            email=email,
+            role=role,
+            user_type=user_type,
+            status='active',
+            created_by=current_user.id,
+            created_at=datetime.now(),
+            full_name=full_name if full_name else None,
+            age=int(age) if age else None,
+            phone=phone if phone else None,
+            address=address if address else None
+        )
+        new_user.set_password(password)
+
+        db.session.add(new_user)
+        db.session.commit()
+
+        # Ghi log
+        log = AdminLog(
+            admin_id=current_user.id,
+            action='create_user_full',
+            target_type='user',
+            target_id=new_user.id,
+            details=f'Created user {username} (email: {email}) with role {role}',
+            timestamp=datetime.now()
+        )
+        db.session.add(log)
+        db.session.commit()
+
+        flash(f'Đã tạo thành công tài khoản cho {full_name or username}', 'success')
+        return redirect(url_for('main.user_management'))
+
+    except ValueError as e:
+        flash('Tuổi phải là số hợp lệ', 'error')
+        return redirect(url_for('main.user_management'))
+    except Exception as e:
+        flash(f'Lỗi khi tạo tài khoản: {str(e)}', 'error')
+        return redirect(url_for('main.user_management'))
+
 @main.route('/admin/manage_user/<int:user_id>', methods=['POST'])
 @super_admin_required
 def manage_user(user_id):
@@ -662,3 +743,205 @@ def clear_confirmation(confirmation_id):
     db.session.commit()
     
     return jsonify({'success': True})
+
+# ============ SYSTEM POWER CONTROL API ============
+
+@main.route('/api/system_status', methods=['GET'])
+@require_api_key
+def get_system_status():
+    """API để ESP32 kiểm tra trạng thái hệ thống (bật/tắt)"""
+    try:
+        # Execute raw SQL query to get system status
+        result = db.session.execute(
+            "SELECT system_enabled, updated_at FROM system_control ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        
+        if result:
+            return jsonify({
+                'system_enabled': bool(result[0]),
+                'last_updated': result[1].isoformat() if result[1] else None,
+                'status': 'active' if result[0] else 'disabled'
+            })
+        else:
+            # Nếu chưa có record nào, tạo mặc định
+            db.session.execute("""
+                INSERT INTO system_control (system_enabled, updated_by, notes)
+                VALUES (TRUE, 'auto_init', 'Auto-created system status')
+            """)
+            db.session.commit()
+            
+            return jsonify({
+                'system_enabled': True,
+                'status': 'active',
+                'last_updated': datetime.now().isoformat()
+            })
+            
+    except Exception as e:
+        return jsonify({'error': f'Database error: {str(e)}'}), 500
+
+@main.route('/api/system_control', methods=['POST'])
+@require_api_key
+def update_system_control():
+    """API để Raspberry Pi cập nhật trạng thái hệ thống (bật/tắt)"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No JSON data provided'}), 400
+            
+        action = data.get('action')  # 'enable' hoặc 'disable'
+        source = data.get('source', 'pi_button')  # nguồn thay đổi
+        notes = data.get('notes', '')
+        
+        if action not in ['enable', 'disable']:
+            return jsonify({'error': 'Invalid action. Use "enable" or "disable"'}), 400
+        
+        system_enabled = True if action == 'enable' else False
+        
+        # Cập nhật trạng thái trong database
+        result = db.session.execute("""
+            UPDATE system_control
+            SET system_enabled = :enabled, updated_at = :updated_at, updated_by = :updated_by, notes = :notes
+            WHERE id = 1
+        """, {
+            'enabled': system_enabled,
+            'updated_at': datetime.now(),
+            'updated_by': source,
+            'notes': f'{action.title()} by {source}. {notes}'
+        })
+        
+        if result.rowcount == 0:
+            # Nếu chưa có record, tạo mới
+            db.session.execute("""
+                INSERT INTO system_control (id, system_enabled, updated_by, notes)
+                VALUES (1, :enabled, :updated_by, :notes)
+            """, {
+                'enabled': system_enabled,
+                'updated_by': source,
+                'notes': f'{action.title()} by {source}. {notes}'
+            })
+        
+        db.session.commit()
+        
+        # Log action cho admin
+        log_entry = AdminLog(
+            admin_id=1,  # System user
+            action=f'system_{action}',
+            target_type='system_control',
+            target_id=1,
+            details=f'System {action}d by {source}. {notes}',
+            timestamp=datetime.now()
+        )
+        db.session.add(log_entry)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'action': action,
+            'system_enabled': system_enabled,
+            'timestamp': datetime.now().isoformat(),
+            'message': f'System successfully {action}d'
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to update system status: {str(e)}'}), 500
+
+@main.route('/api/power_button_press', methods=['POST'])
+@require_api_key
+def handle_power_button_press():
+    """API đặc biệt để xử lý nhấn nút power từ Raspberry Pi"""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id', 1)
+        button_duration = data.get('duration', 0)  # thời gian nhấn nút (giây)
+        
+        # Lấy trạng thái hiện tại
+        result = db.session.execute(
+            "SELECT system_enabled FROM system_control ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        
+        current_status = result[0] if result else True
+        
+        # Toggle trạng thái
+        new_status = not current_status
+        action = 'enable' if new_status else 'disable'
+        
+        # Cập nhật database
+        update_result = db.session.execute("""
+            UPDATE system_control
+            SET system_enabled = :enabled, updated_at = :updated_at, updated_by = :updated_by, notes = :notes
+            WHERE id = 1
+        """, {
+            'enabled': new_status,
+            'updated_at': datetime.now(),
+            'updated_by': f'power_button_user_{user_id}',
+            'notes': f'Power button pressed for {button_duration}s - {action}d system'
+        })
+        
+        if update_result.rowcount == 0:
+            db.session.execute("""
+                INSERT INTO system_control (id, system_enabled, updated_by, notes)
+                VALUES (1, :enabled, :updated_by, :notes)
+            """, {
+                'enabled': new_status,
+                'updated_by': f'power_button_user_{user_id}',
+                'notes': f'Power button pressed - {action}d system'
+            })
+        
+        db.session.commit()
+        
+        # Log cho admin
+        log_entry = AdminLog(
+            admin_id=user_id,
+            action=f'power_button_{action}',
+            target_type='system_control',
+            target_id=1,
+            details=f'Power button pressed by user {user_id} - System {action}d',
+            timestamp=datetime.now()
+        )
+        db.session.add(log_entry)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'previous_status': current_status,
+            'new_status': new_status,
+            'action': action,
+            'timestamp': datetime.now().isoformat(),
+            'message': f'Power button processed - System {action}d'
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Power button processing failed: {str(e)}'}), 500
+
+@main.route('/admin/system-power')
+@admin_required
+def system_power_control():
+    """Admin interface để kiểm soát power system"""
+    try:
+        # Lấy trạng thái hiện tại
+        result = db.session.execute(
+            "SELECT * FROM system_control ORDER BY updated_at DESC LIMIT 1"
+        ).fetchone()
+        
+        # Convert result to dict-like object if exists
+        current_status = None
+        if result:
+            current_status = {
+                'system_enabled': result[1],
+                'updated_at': result[2],
+                'updated_by': result[3],
+                'notes': result[4]
+            }
+        
+        # Lấy lịch sử thay đổi gần đây
+        recent_logs = AdminLog.query.filter(
+            AdminLog.target_type == 'system_control'
+        ).order_by(AdminLog.timestamp.desc()).limit(20).all()
+        
+        return render_template('admin/system_power.html',
+                             current_status=current_status,
+                             recent_logs=recent_logs,
+                             User=User)
+    except Exception as e:
+        flash(f'Lỗi khi tải trang quản lý power: {str(e)}', 'error')
+        return redirect(url_for('main.admin_logs'))

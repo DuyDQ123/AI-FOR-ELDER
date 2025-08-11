@@ -97,7 +97,7 @@ void checkTouch() {
     lastTouch = millis();
     
     // Giả lập tọa độ touch đơn giản
-    int touchX = 160; // Giữa màn hình
+    int touchX = 180; // Giữa màn hình
     int touchY = 150;
     
     Serial.println("Touch detected at: " + String(touchX) + "," + String(touchY));

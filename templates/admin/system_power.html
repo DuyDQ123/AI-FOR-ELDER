@@ -1,0 +1,356 @@
+{% extends "base.html" %}
+
+{% block title %}System Power Control{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-power-off mr-2"></i>System Power Control
+                    </h6>
+                    <div class="dropdown no-arrow">
+                        <a class="dropdown-toggle" href="#" role="button" id="dropdownMenuLink"
+                            data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                            <i class="fas fa-ellipsis-v fa-sm fa-fw text-gray-400"></i>
+                        </a>
+                        <div class="dropdown-menu dropdown-menu-right shadow animated--fade-in"
+                            aria-labelledby="dropdownMenuLink">
+                            <div class="dropdown-header">Power Options:</div>
+                            <a class="dropdown-item" href="#" onclick="toggleSystem()">
+                                <i class="fas fa-toggle-on fa-sm fa-fw mr-2 text-gray-400"></i>
+                                Toggle System
+                            </a>
+                            <div class="dropdown-divider"></div>
+                            <a class="dropdown-item" href="#" onclick="refreshStatus()">
+                                <i class="fas fa-sync fa-sm fa-fw mr-2 text-gray-400"></i>
+                                Refresh Status
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- Current System Status -->
+                    <div class="row mb-4">
+                        <div class="col-lg-6">
+                            <div class="card border-left-{% if current_status and current_status.system_enabled %}success{% else %}danger{% endif %} shadow h-100 py-2">
+                                <div class="card-body">
+                                    <div class="row no-gutters align-items-center">
+                                        <div class="col mr-2">
+                                            <div class="text-xs font-weight-bold text-{% if current_status and current_status.system_enabled %}success{% else %}danger{% endif %} text-uppercase mb-1">
+                                                System Status
+                                            </div>
+                                            <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                                {% if current_status and current_status.system_enabled %}
+                                                    <i class="fas fa-check-circle text-success mr-2"></i>ENABLED
+                                                {% else %}
+                                                    <i class="fas fa-times-circle text-danger mr-2"></i>DISABLED
+                                                {% endif %}
+                                            </div>
+                                            {% if current_status %}
+                                            <div class="text-xs text-gray-600 mt-1">
+                                                Last updated: {{ current_status.updated_at.strftime('%Y-%m-%d %H:%M:%S') if current_status.updated_at else 'Never' }}
+                                            </div>
+                                            <div class="text-xs text-gray-600">
+                                                Updated by: {{ current_status.updated_by or 'Unknown' }}
+                                            </div>
+                                            {% endif %}
+                                        </div>
+                                        <div class="col-auto">
+                                            <i class="fas fa-power-off fa-2x text-gray-300"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-lg-6">
+                            <div class="card border-left-info shadow h-100 py-2">
+                                <div class="card-body">
+                                    <div class="row no-gutters align-items-center">
+                                        <div class="col mr-2">
+                                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                                                System Control
+                                            </div>
+                                            <div class="row no-gutters align-items-center">
+                                                <div class="col-auto">
+                                                    <div class="h5 mb-0 mr-3 font-weight-bold text-gray-800">Medicine Dispensing</div>
+                                                </div>
+                                            </div>
+                                            <div class="text-xs text-gray-600 mt-1">
+                                                {% if current_status and current_status.system_enabled %}
+                                                    Medicine notifications and dispensing are active
+                                                {% else %}
+                                                    All medicine functions are suspended
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                        <div class="col-auto">
+                                            <i class="fas fa-pills fa-2x text-gray-300"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Control Buttons -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <div class="card border-left-primary shadow">
+                                <div class="card-body">
+                                    <h6 class="font-weight-bold text-primary mb-3">
+                                        <i class="fas fa-cogs mr-2"></i>Manual Control
+                                    </h6>
+                                    <div class="btn-group" role="group">
+                                        <button type="button" class="btn btn-success" onclick="enableSystem()" 
+                                                {% if current_status and current_status.system_enabled %}disabled{% endif %}>
+                                            <i class="fas fa-play mr-2"></i>Enable System
+                                        </button>
+                                        <button type="button" class="btn btn-danger" onclick="disableSystem()"
+                                                {% if not current_status or not current_status.system_enabled %}disabled{% endif %}>
+                                            <i class="fas fa-stop mr-2"></i>Disable System
+                                        </button>
+                                        <button type="button" class="btn btn-info" onclick="refreshStatus()">
+                                            <i class="fas fa-sync mr-2"></i>Refresh
+                                        </button>
+                                    </div>
+                                    <div class="mt-2">
+                                        <small class="text-muted">
+                                            <i class="fas fa-info-circle mr-1"></i>
+                                            Power button on Raspberry Pi can also toggle system status
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Power Control Logs -->
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="card shadow">
+                                <div class="card-header py-3">
+                                    <h6 class="m-0 font-weight-bold text-primary">
+                                        <i class="fas fa-history mr-2"></i>Recent Power Control Activity
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    {% if recent_logs %}
+                                    <div class="table-responsive">
+                                        <table class="table table-bordered" width="100%" cellspacing="0">
+                                            <thead>
+                                                <tr>
+                                                    <th>Timestamp</th>
+                                                    <th>Action</th>
+                                                    <th>Admin</th>
+                                                    <th>Details</th>
+                                                    <th>Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for log in recent_logs %}
+                                                <tr>
+                                                    <td>{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                                    <td>
+                                                        {% if 'enable' in log.action %}
+                                                            <span class="badge badge-success">
+                                                                <i class="fas fa-play mr-1"></i>{{ log.action.replace('_', ' ').title() }}
+                                                            </span>
+                                                        {% elif 'disable' in log.action %}
+                                                            <span class="badge badge-danger">
+                                                                <i class="fas fa-stop mr-1"></i>{{ log.action.replace('_', ' ').title() }}
+                                                            </span>
+                                                        {% elif 'power_button' in log.action %}
+                                                            <span class="badge badge-warning">
+                                                                <i class="fas fa-hand-pointer mr-1"></i>{{ log.action.replace('_', ' ').title() }}
+                                                            </span>
+                                                        {% else %}
+                                                            <span class="badge badge-info">{{ log.action.replace('_', ' ').title() }}</span>
+                                                        {% endif %}
+                                                    </td>
+                                                    <td>
+                                                        {% if log.admin_id %}
+                                                            {% set admin_user = User.query.get(log.admin_id) %}
+                                                            {% if admin_user %}
+                                                                {{ admin_user.username }}
+                                                            {% else %}
+                                                                System (ID: {{ log.admin_id }})
+                                                            {% endif %}
+                                                        {% else %}
+                                                            System
+                                                        {% endif %}
+                                                    </td>
+                                                    <td>
+                                                        <small>{{ log.details or 'No details' }}</small>
+                                                    </td>
+                                                    <td>
+                                                        {% if 'enable' in log.action %}
+                                                            <i class="fas fa-check-circle text-success"></i>
+                                                        {% elif 'disable' in log.action %}
+                                                            <i class="fas fa-times-circle text-danger"></i>
+                                                        {% else %}
+                                                            <i class="fas fa-info-circle text-info"></i>
+                                                        {% endif %}
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    {% else %}
+                                    <div class="text-center">
+                                        <i class="fas fa-history fa-3x text-gray-300 mb-3"></i>
+                                        <p class="text-gray-500">No power control activity found</p>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- System Control JavaScript -->
+<script>
+function enableSystem() {
+    if (confirm('Are you sure you want to ENABLE the medicine dispensing system?')) {
+        fetch('/api/system_control', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-API-Key': 'my-secret-key-2025'  // Should be dynamic in production
+            },
+            body: JSON.stringify({
+                action: 'enable',
+                source: 'admin_panel',
+                notes: 'Manual enable from admin panel'
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('success', 'System enabled successfully!');
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                showAlert('danger', 'Failed to enable system: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(error => {
+            showAlert('danger', 'Network error: ' + error.message);
+        });
+    }
+}
+
+function disableSystem() {
+    if (confirm('Are you sure you want to DISABLE the medicine dispensing system?\n\nThis will stop all medicine notifications and dispensing.')) {
+        fetch('/api/system_control', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-API-Key': 'my-secret-key-2025'  // Should be dynamic in production
+            },
+            body: JSON.stringify({
+                action: 'disable',
+                source: 'admin_panel',
+                notes: 'Manual disable from admin panel'
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('warning', 'System disabled successfully!');
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                showAlert('danger', 'Failed to disable system: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(error => {
+            showAlert('danger', 'Network error: ' + error.message);
+        });
+    }
+}
+
+function toggleSystem() {
+    // Get current status from the page DOM instead of template variables
+    const statusElement = document.querySelector('.text-success, .text-danger');
+    const isEnabled = statusElement && statusElement.textContent.includes('ENABLED');
+    
+    if (isEnabled) {
+        disableSystem();
+    } else {
+        enableSystem();
+    }
+}
+
+function refreshStatus() {
+    location.reload();
+}
+
+function showAlert(type, message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="close" data-dismiss="alert">
+            <span>&times;</span>
+        </button>
+    `;
+    
+    const container = document.querySelector('.container-fluid');
+    container.insertBefore(alertDiv, container.firstChild);
+    
+    // Auto dismiss after 5 seconds
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.parentNode.removeChild(alertDiv);
+        }
+    }, 5000);
+}
+
+// Auto refresh every 30 seconds
+setInterval(() => {
+    console.log('Auto-refreshing system status...');
+    location.reload();
+}, 30000);
+</script>
+
+<style>
+.card {
+    transition: transform 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+}
+
+.btn-group .btn {
+    margin-right: 5px;
+}
+
+.table th {
+    border-top: none;
+    font-weight: 600;
+    background-color: #f8f9fc;
+}
+
+.badge {
+    font-size: 0.75em;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+.text-success, .text-danger {
+    animation: pulse 2s infinite;
+}
+</style>
+{% endblock %}

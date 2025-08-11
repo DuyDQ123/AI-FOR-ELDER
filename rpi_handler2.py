@@ -13,6 +13,7 @@ SERVO_PINS = {
 }
 PIN_CONFIRM = 16  # Confirmation button GPIO (changed from 18 to avoid conflict with servo)
 PIN_INFO = 23  # GPIO pin for the "INFO" button
+PIN_POWER = 22  # GPIO pin for the "POWER" button (system on/off)
 SERVO_CLOSED = 0
 SERVO_OPEN = 90
 
@@ -33,7 +34,9 @@ class TestRaspberryPiHandler:
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(PIN_CONFIRM, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
         GPIO.setup(PIN_INFO, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+        GPIO.setup(PIN_POWER, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
         GPIO.add_event_detect(PIN_INFO, GPIO.FALLING, callback=self.info_callback, bouncetime=300)
+        GPIO.add_event_detect(PIN_POWER, GPIO.FALLING, callback=self.power_callback, bouncetime=500)
 
         self.servos = {}
         print(f"Initializing {len(SERVO_PINS)} medicine compartments:")
@@ -51,9 +54,16 @@ class TestRaspberryPiHandler:
         self.current_medicine = None
         self.current_schedule_id = None
         self.alert_time = None
+        self.system_enabled = True  # Track system power status
+        self.power_button_press_time = None
 
         print(f"Confirmation button: GPIO {PIN_CONFIRM}")
+        print(f"INFO button: GPIO {PIN_INFO}")
+        print(f"POWER button: GPIO {PIN_POWER}")
         print("Connecting to server...")
+        
+        # Check initial system status
+        self.check_system_status()
 
         self.schedule_thread = threading.Thread(target=self.schedule_loop)
         self.schedule_thread.daemon = True
@@ -63,6 +73,8 @@ class TestRaspberryPiHandler:
         print("=" * 60)
         print("INSTRUCTIONS:")
         print("   - When notified, press the confirmation button after taking the medicine")
+        print("   - Press INFO button to view user profile on ESP32 display")
+        print("   - Press POWER button to enable/disable the system")
         print("   - Press Ctrl+C to stop the program")
         print("=" * 60)
 
@@ -72,10 +84,35 @@ class TestRaspberryPiHandler:
         time.sleep(2)
         self.servos[compartment].ChangeDutyCycle(0)
 
+    def check_system_status(self):
+        """Check system power status from server"""
+        try:
+            headers = {"X-API-Key": API_KEY}
+            response = requests.get(f"{SERVER_URL}/api/system_status", headers=headers)
+            
+            if response.status_code == 200:
+                status_data = response.json()
+                self.system_enabled = status_data.get('system_enabled', True)
+                status_text = "ENABLED" if self.system_enabled else "DISABLED"
+                print(f"System Status: {status_text}")
+                return self.system_enabled
+            else:
+                print(f"Error checking system status: {response.status_code}")
+                return True  # Default to enabled if can't check
+        except Exception as e:
+            print(f"Error checking system status: {e}")
+            return True
+
     def schedule_loop(self):
         print("Starting schedule check for user ID:", USER_ID)
         while True:
             try:
+                # Check system status first
+                if not self.check_system_status():
+                    print("System is DISABLED - Skipping schedule check")
+                    time.sleep(10)  # Check less frequently when disabled
+                    continue
+                
                 headers = {"X-API-Key": API_KEY}
                 response = requests.get(f"{SERVER_URL}/api/check_schedule_by_user/{USER_ID}", headers=headers)
 
@@ -90,7 +127,7 @@ class TestRaspberryPiHandler:
                         schedule_id = schedule.get("schedule_id")
                         notes = schedule.get("notes", "")
 
-                        if compartment in SERVO_PINS and not self.is_alerting:
+                        if compartment in SERVO_PINS and not self.is_alerting and self.system_enabled:
                             self.is_alerting = True
                             self.current_compartment = compartment
                             self.current_medicine = medicine_name
@@ -221,6 +258,61 @@ class TestRaspberryPiHandler:
                     print(f"Error sending INFO flag: {response.status_code}")
             except Exception as e:
                 print(f"Error handling INFO button press: {e}")
+
+    def power_callback(self, channel):
+        """Handle power button press to toggle system on/off"""
+        press_time = datetime.now()
+        
+        # Debounce protection
+        if self.power_button_press_time:
+            time_diff = (press_time - self.power_button_press_time).total_seconds()
+            if time_diff < 2:  # Ignore presses within 2 seconds
+                return
+        
+        self.power_button_press_time = press_time
+        print("\n" + "=" * 60)
+        print("POWER BUTTON PRESSED!")
+        print("=" * 60)
+        
+        try:
+            # Get current system status
+            current_status = self.check_system_status()
+            new_action = 'disable' if current_status else 'enable'
+            
+            headers = {"X-API-Key": API_KEY, "Content-Type": "application/json"}
+            data = {
+                "user_id": USER_ID,
+                "duration": 1,  # Button press duration
+                "timestamp": press_time.isoformat()
+            }
+            
+            response = requests.post(f"{SERVER_URL}/api/power_button_press", headers=headers, json=data)
+            
+            if response.status_code == 200:
+                result = response.json()
+                self.system_enabled = result.get('new_status', True)
+                status_text = "ENABLED" if self.system_enabled else "DISABLED"
+                
+                print(f"Power button processed successfully!")
+                print(f"System Status: {status_text}")
+                print(f"Action: {result.get('action', 'unknown').upper()}")
+                print("=" * 60)
+                
+                if not self.system_enabled:
+                    print("SYSTEM DISABLED - Medicine dispensing is now OFF")
+                    print("Press POWER button again to re-enable the system")
+                else:
+                    print("SYSTEM ENABLED - Medicine dispensing is now ON")
+                    print("Resuming normal operation...")
+                    
+            else:
+                print(f"Error processing power button: {response.status_code}")
+                print(f"Response: {response.text}")
+                
+        except Exception as e:
+            print(f"Error handling power button press: {e}")
+        
+        print("=" * 60)
 
     def cleanup(self):
         for servo in self.servos.values():

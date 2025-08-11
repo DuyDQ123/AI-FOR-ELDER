@@ -65,16 +65,36 @@ def logout():
 @login_required
 def profile():
     if request.method == 'POST':
+        # Cập nhật thông tin cá nhân
+        full_name = request.form.get('full_name')
+        age = request.form.get('age')
+        phone = request.form.get('phone')
+        address = request.form.get('address')
         email = request.form.get('email')
         current_password = request.form.get('current_password')
         new_password = request.form.get('new_password')
         
+        # Cập nhật thông tin cá nhân
+        if full_name:
+            current_user.full_name = full_name
+        if age:
+            try:
+                current_user.age = int(age)
+            except ValueError:
+                flash('Tuổi phải là số', 'error')
+        if phone:
+            current_user.phone = phone
+        if address:
+            current_user.address = address
+        
+        # Cập nhật email
         if email != current_user.email:
             if User.query.filter_by(email=email).first():
                 flash('Email đã được sử dụng', 'error')
             else:
                 current_user.email = email
                 
+        # Cập nhật mật khẩu
         if current_password and new_password:
             if current_user.check_password(current_password):
                 current_user.set_password(new_password)
