@@ -1,4 +1,3 @@
-
 import RPi.GPIO as GPIO
 import time
 import threading
@@ -7,16 +6,16 @@ from datetime import datetime
 import sys
 import os
 
-# Thêm path để import zalo_service
+# Add path to import notification service
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 try:
-    from zalo_service import zalo_service
-    ZALO_AVAILABLE = True
-    print("✅ Zalo service imported successfully")
+    from zalo_service import notification_service
+    NOTIFICATION_AVAILABLE = True
+    print("Notification service imported successfully")
 except ImportError as e:
-    print(f"⚠️ Warning: Cannot import zalo_service: {e}")
+    print(f"Warning: Cannot import notification service: {e}")
     print("Notification features will be disabled")
-    ZALO_AVAILABLE = False
+    NOTIFICATION_AVAILABLE = False
 
 # Servo pin configuration (compartment_number: GPIO pin)
 SERVO_PINS = {
@@ -35,7 +34,7 @@ SERVER_URL = "http://192.168.1.159:5000"
 API_KEY = "my-secret-key-2025"
 
 # User ID - change according to the specific user
-USER_ID = 13
+USER_ID = 15
 
 class TestRaspberryPiHandler:
     def __init__(self):
@@ -71,9 +70,9 @@ class TestRaspberryPiHandler:
         self.system_enabled = True  # Track system power status
         self.power_button_press_time = None
         
-        # Thông báo Zalo tracking
-        self.pending_notifications = {}  # Track các thông báo chưa xác nhận
-        self.notification_sent = {}  # Track đã gửi thông báo chưa
+        # Emergency notification tracking
+        self.pending_notifications = {}  # Track unconfirmed notifications
+        self.notification_sent = {}  # Track sent notifications
 
         print(f"Confirmation button: GPIO {PIN_CONFIRM}")
         print(f"INFO button: GPIO {PIN_INFO}")
@@ -125,7 +124,7 @@ class TestRaspberryPiHandler:
         print("Starting schedule check for user ID:", USER_ID)
         while True:
             try:
-                # Check và gửi thông báo cho các medicine chưa được xác nhận
+                # Check and send notifications for unconfirmed medicines
                 self.check_pending_notifications()
                 
                 # Check system status first
@@ -178,7 +177,7 @@ class TestRaspberryPiHandler:
                             print("\nPLEASE PRESS THE CONFIRM BUTTON AFTER TAKING THE MEDICINE!")
                             print("Waiting for confirmation...")
 
-                            # THÊM: Đặt timer cho thông báo Zalo
+                            # Setup emergency notification timer
                             self.setup_notification_timer(schedule_id, medicine_name, compartment)
 
                             self.start_reminder_timer()
@@ -258,10 +257,10 @@ class TestRaspberryPiHandler:
             except Exception as e:
                 print(f"Error sending confirmation: {e}")
 
-            # THÊM: Xóa pending notification khi đã xác nhận
+            # Cancel pending notification when confirmed
             if self.current_schedule_id in self.pending_notifications:
                 del self.pending_notifications[self.current_schedule_id]
-                print("✅ Đã hủy thông báo khẩn cấp - người dùng đã xác nhận")
+                print("Emergency notification cancelled - user confirmed")
 
             self.is_alerting = False
             self.current_compartment = None
@@ -344,23 +343,23 @@ class TestRaspberryPiHandler:
         print("=" * 60)
 
     def setup_notification_timer(self, schedule_id, medicine_name, compartment):
-        """Đặt timer cho thông báo Zalo"""
-        if not ZALO_AVAILABLE:
-            print("⚠️ Zalo service không khả dụng")
+        """Setup timer for emergency notifications"""
+        if not NOTIFICATION_AVAILABLE:
+            print("Warning: Notification service not available")
             return
             
         try:
-            # Lấy thông tin user từ server để biết notification delay
+            # Get user info from server to know notification delay
             headers = {"X-API-Key": API_KEY}
             response = requests.get(f"{SERVER_URL}/api/user_profile/{USER_ID}", headers=headers)
             
             if response.status_code == 200:
                 user_info = response.json()
-                notification_delay = user_info.get('user_info', {}).get('notification_delay_minutes', 15)
+                notification_delay = user_info.get('notification_delay_minutes', 15)
                 
-                # Lưu thông tin pending notification
+                # Save pending notification info - use direct access to root level fields
                 self.pending_notifications[schedule_id] = {
-                    'user_info': user_info.get('user_info', {}),
+                    'user_info': user_info,  # Store full user_info at root level
                     'medicine_name': medicine_name,
                     'compartment': compartment,
                     'alert_time': time.time(),
@@ -368,16 +367,16 @@ class TestRaspberryPiHandler:
                     'notified': False
                 }
                 
-                print(f"📝 Set notification timer: {notification_delay} minutes for {medicine_name}")
+                print(f"Set notification timer: {notification_delay} minutes for {medicine_name}")
             else:
-                print(f"❌ Không thể lấy thông tin user để set notification timer")
+                print(f"Cannot get user info to set notification timer")
                 
         except Exception as e:
-            print(f"❌ Lỗi setup notification timer: {e}")
+            print(f"Error setting up notification timer: {e}")
 
     def check_pending_notifications(self):
-        """Kiểm tra và gửi thông báo cho các thuốc chưa được xác nhận"""
-        if not ZALO_AVAILABLE or not self.pending_notifications:
+        """Check and send notifications for unconfirmed medicines"""
+        if not NOTIFICATION_AVAILABLE or not self.pending_notifications:
             return
             
         current_time = time.time()
@@ -386,26 +385,26 @@ class TestRaspberryPiHandler:
         for schedule_id, notification_info in self.pending_notifications.items():
             time_elapsed = current_time - notification_info['alert_time']
             
-            # Nếu đã quá thời gian chờ và chưa gửi thông báo
+            # If time has passed and notification not sent yet
             if (time_elapsed >= notification_info['notification_delay_seconds'] and
                 not notification_info['notified']):
                 
                 self.send_emergency_notification(schedule_id, notification_info)
                 notification_info['notified'] = True
                 
-            # Xóa notification sau 2 giờ
+            # Remove notification after 2 hours
             elif time_elapsed >= 7200:  # 2 hours
                 to_remove.append(schedule_id)
         
-        # Xóa các notification cũ
+        # Clean up old notifications
         for schedule_id in to_remove:
             del self.pending_notifications[schedule_id]
-            print(f"🗑️ Cleaned up old notification for schedule {schedule_id}")
+            print(f"Cleaned up old notification for schedule {schedule_id}")
 
     def send_emergency_notification(self, schedule_id, notification_info):
-        """Gửi thông báo khẩn cấp qua Zalo"""
-        if not ZALO_AVAILABLE:
-            print("⚠️ Cannot send notification - Zalo service unavailable")
+        """Send emergency notification via email"""
+        if not NOTIFICATION_AVAILABLE:
+            print("Warning: Cannot send notification - Notification service unavailable")
             return
             
         try:
@@ -413,34 +412,36 @@ class TestRaspberryPiHandler:
             medicine_name = notification_info['medicine_name']
             compartment = notification_info['compartment']
             
-            print(f"\n🚨 SENDING EMERGENCY NOTIFICATION 🚨")
-            print(f"User: {user_info.get('full_name', 'Unknown')}")
+            print(f"\nSENDING EMERGENCY NOTIFICATION")
+            # Access user info from nested structure or direct access
+            user_name = user_info.get('user_info', {}).get('full_name') or user_info.get('full_name', 'Unknown')
+            print(f"User: {user_name}")
             print(f"Medicine: {medicine_name}")
             print(f"Emergency Contact: {user_info.get('emergency_contact_name', 'Unknown')}")
             print(f"Contact Phone: {user_info.get('emergency_contact_phone', 'Unknown')}")
-            print(f"Contact Zalo: {user_info.get('emergency_contact_zalo_id', 'Unknown')}")
+            print(f"Contact Email: {user_info.get('emergency_contact_zalo_id', 'Unknown')}")
             
-            # Gửi thông báo Zalo
-            success = zalo_service.send_missed_medicine_notification(
+            # Send notification
+            success = notification_service.send_missed_medicine_notification(
                 user_info, medicine_name, compartment
             )
             
             if success:
-                print("✅ Đã gửi thông báo Zalo thành công!")
+                print("Emergency notification sent successfully!")
                 self.log_notification_to_server(
-                    user_info, 'zalo', 'sent', medicine_name, compartment, schedule_id
+                    user_info, 'email', 'sent', medicine_name, compartment, schedule_id
                 )
             else:
-                print("❌ Thất bại gửi Zalo")
+                print("Failed to send emergency notification")
                 self.log_notification_to_server(
-                    user_info, 'zalo', 'failed', medicine_name, compartment, schedule_id
+                    user_info, 'email', 'failed', medicine_name, compartment, schedule_id
                 )
                 
         except Exception as e:
-            print(f"❌ Lỗi gửi thông báo khẩn cấp: {e}")
+            print(f"Error sending emergency notification: {e}")
 
     def log_notification_to_server(self, user_info, method, status, medicine_name, compartment, schedule_id):
-        """Ghi log notification lên server"""
+        """Log notification to server"""
         try:
             headers = {"X-API-Key": API_KEY, "Content-Type": "application/json"}
             log_data = {
@@ -460,12 +461,12 @@ class TestRaspberryPiHandler:
                                    headers=headers, json=log_data, timeout=5)
             
             if response.status_code == 200:
-                print(f"📝 Đã ghi log notification lên server")
+                print(f"Notification logged to server")
             else:
-                print(f"⚠️ Không thể ghi log notification: {response.status_code}")
+                print(f"Cannot log notification: {response.status_code}")
                 
         except Exception as e:
-            print(f"⚠️ Lỗi ghi log notification: {e}")
+            print(f"Error logging notification: {e}")
 
     def cleanup(self):
         for servo in self.servos.values():
@@ -492,3 +493,4 @@ if __name__ == "__main__":
         print("Thank you for using the system!")
 
         handler.cleanup()
+

@@ -644,7 +644,13 @@ def get_user_profile(user_id):
             'total_medicines': len(medicine_list),
             'low_stock_count': sum(1 for m in medicine_list if m['low_stock']),
             'active_schedules': total_schedules
-        }
+        },
+        # Emergency contact info for notification system
+        'emergency_contact_name': user.emergency_contact_name,
+        'emergency_contact_phone': user.emergency_contact_phone,
+        'emergency_contact_relationship': user.emergency_contact_relationship,
+        'emergency_contact_zalo_id': user.emergency_contact_zalo_id,
+        'notification_delay_minutes': user.notification_delay_minutes or 15
     })
 
 def get_current_schedules(user_id):
@@ -1103,3 +1109,52 @@ def get_notification_history(user_id):
         
     except Exception as e:
         return jsonify({'error': f'Lỗi lấy lịch sử thông báo: {str(e)}'}), 500
+
+@main.route('/api/log_notification', methods=['POST'])
+@require_api_key
+def log_notification():
+    """API endpoint để log thông báo từ Raspberry Pi"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No JSON data provided'}), 400
+            
+        user_id = data.get('user_id')
+        schedule_id = data.get('schedule_id')
+        notification_type = data.get('notification_type', 'missed_medicine')
+        method = data.get('method', 'email')
+        delivery_status = data.get('delivery_status', 'sent')
+        medicine_name = data.get('medicine_name', '')
+        compartment = data.get('compartment', 0)
+        emergency_contact_name = data.get('emergency_contact_name', '')
+        emergency_contact_phone = data.get('emergency_contact_phone', '')
+        emergency_contact_email = data.get('emergency_contact_zalo_id', '')  # Using zalo_id field for email
+        
+        if not user_id:
+            return jsonify({'error': 'Missing user_id'}), 400
+            
+        # Create notification log entry
+        notification_log = NotificationHistory(
+            user_id=user_id,
+            schedule_id=schedule_id,
+            notification_type=notification_type,
+            recipient_phone=emergency_contact_phone,
+            recipient_zalo_id=emergency_contact_email,  # Email stored in zalo_id field
+            message_content=f'{notification_type}: {medicine_name} from compartment {compartment}',
+            delivery_status=delivery_status,
+            sent_at=datetime.now(),
+            error_message=data.get('error_message')
+        )
+        
+        db.session.add(notification_log)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'notification_id': notification_log.id,
+            'message': 'Notification logged successfully'
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Failed to log notification: {str(e)}'}), 500
