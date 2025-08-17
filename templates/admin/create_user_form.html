@@ -1,0 +1,230 @@
+<!-- Form tạo user với thông tin người thân - Thêm vào templates/admin/user_management.html -->
+
+<div class="modal fade" id="createUserModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-user-plus"></i> Tạo Tài Khoản Người Dùng Mới
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            
+            <form method="POST" action="{{ url_for('main.create_user_full') }}">
+                <div class="modal-body">
+                    <!-- Thông tin đăng nhập -->
+                    <h6 class="text-primary border-bottom pb-2">
+                        <i class="fas fa-sign-in-alt"></i> Thông Tin Đăng Nhập
+                    </h6>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Tên đăng nhập <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="username" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Email <span class="text-danger">*</span></label>
+                            <input type="email" class="form-control" name="email" required>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Mật khẩu <span class="text-danger">*</span></label>
+                            <input type="password" class="form-control" name="password" minlength="6" required>
+                            <small class="text-muted">Tối thiểu 6 ký tự</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Vai trò</label>
+                            <select class="form-select" name="role">
+                                <option value="user" selected>Người dùng</option>
+                                <option value="admin">Quản trị viên</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Thông tin cá nhân -->
+                    <h6 class="text-primary border-bottom pb-2 mt-4">
+                        <i class="fas fa-user"></i> Thông Tin Cá Nhân
+                    </h6>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Họ và tên</label>
+                            <input type="text" class="form-control" name="full_name" placeholder="VD: Nguyễn Văn An">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Tuổi</label>
+                            <input type="number" class="form-control" name="age" min="1" max="120" placeholder="VD: 75">
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Số điện thoại</label>
+                            <input type="tel" class="form-control" name="phone" placeholder="VD: 0987654321">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Loại người dùng</label>
+                            <select class="form-select" name="user_type">
+                                <option value="patient" selected>Bệnh nhân</option>
+                                <option value="caregiver">Người chăm sóc</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Địa chỉ</label>
+                        <textarea class="form-control" name="address" rows="2" placeholder="VD: 123 Đường ABC, Quận 1, TP.HCM"></textarea>
+                    </div>
+
+                    <!-- Thông tin người thân khẩn cấp -->
+                    <h6 class="text-danger border-bottom pb-2 mt-4">
+                        <i class="fas fa-phone-alt"></i> Thông Tin Người Thân Khẩn Cấp
+                    </h6>
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i>
+                        <strong>Quan trọng:</strong> Thông tin này dùng để gửi thông báo khi người cao tuổi không uống thuốc đúng giờ.
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Tên người thân <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="emergency_contact_name" 
+                                   placeholder="VD: Nguyễn Thị Lan" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Mối quan hệ <span class="text-danger">*</span></label>
+                            <select class="form-select" name="emergency_contact_relationship" required>
+                                <option value="">-- Chọn mối quan hệ --</option>
+                                <option value="con_trai">Con trai</option>
+                                <option value="con_gai">Con gái</option>
+                                <option value="vo_chong">Vợ/Chồng</option>
+                                <option value="anh_chi_em">Anh/Chị/Em</option>
+                                <option value="chau">Cháu</option>
+                                <option value="ban_be">Bạn bè</option>
+                                <option value="khac">Khác</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Số điện thoại người thân <span class="text-danger">*</span></label>
+                            <input type="tel" class="form-control" name="emergency_contact_phone" 
+                                   placeholder="VD: 0987654321" pattern="[0-9]{10,11}" required>
+                            <small class="text-muted">Dùng để gửi SMS backup</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Email người thân <span class="text-danger">*</span></label>
+                            <input type="email" class="form-control" name="emergency_contact_zalo_id"
+                                   placeholder="VD: nguoi_than@gmail.com" required>
+                            <small class="text-muted">Dùng để gửi thông báo khẩn cấp qua email</small>
+                        </div>
+                    </div>
+
+                    <!-- Cấu hình thông báo -->
+                    <h6 class="text-warning border-bottom pb-2 mt-4">
+                        <i class="fas fa-bell"></i> Cấu Hình Thông Báo
+                    </h6>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Thời gian chờ trước khi thông báo</label>
+                            <select class="form-select" name="notification_delay_minutes">
+                                <option value="5">5 phút</option>
+                                <option value="10">10 phút</option>
+                                <option value="15" selected>15 phút</option>
+                                <option value="20">20 phút</option>
+                                <option value="30">30 phút</option>
+                                <option value="60">1 giờ</option>
+                            </select>
+                            <small class="text-muted">Nếu không xác nhận uống thuốc sau thời gian này, hệ thống sẽ gửi thông báo cho người thân</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times"></i> Hủy
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Tạo Tài Khoản
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- JavaScript validation -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.querySelector('#createUserModal form');
+    const phoneInput = document.querySelector('input[name="emergency_contact_phone"]');
+    
+    // Validate phone number format
+    phoneInput.addEventListener('input', function() {
+        const phone = this.value;
+        const phoneRegex = /^[0-9]{10,11}$/;
+        
+        if (phone && !phoneRegex.test(phone)) {
+            this.setCustomValidity('Số điện thoại phải gồm 10-11 chữ số');
+            this.classList.add('is-invalid');
+        } else {
+            this.setCustomValidity('');
+            this.classList.remove('is-invalid');
+        }
+    });
+    
+    // Form validation
+    form.addEventListener('submit', function(e) {
+        const requiredFields = form.querySelectorAll('[required]');
+        let isValid = true;
+        
+        requiredFields.forEach(field => {
+            if (!field.value.trim()) {
+                field.classList.add('is-invalid');
+                isValid = false;
+            } else {
+                field.classList.remove('is-invalid');
+            }
+        });
+        
+        if (!isValid) {
+            e.preventDefault();
+            alert('Vui lòng điền đầy đủ các trường bắt buộc!');
+        }
+    });
+});
+</script>
+
+<style>
+.modal-lg {
+    max-width: 800px;
+}
+
+.border-bottom {
+    border-bottom: 2px solid #dee2e6 !important;
+}
+
+.text-danger {
+    color: #dc3545 !important;
+}
+
+.is-invalid {
+    border-color: #dc3545;
+}
+
+.alert-info {
+    background-color: #d1ecf1;
+    border-color: #bee5eb;
+    color: #0c5460;
+}
+
+.form-label {
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+}
+
+.text-muted {
+    font-size: 0.875rem;
+}
+</style>

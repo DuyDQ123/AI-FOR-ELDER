@@ -23,6 +23,13 @@ class User(UserMixin, db.Model):
     phone = sa.Column(sa.String(20), nullable=True)  # Số điện thoại
     address = sa.Column(sa.Text, nullable=True)  # Địa chỉ
     created_at = sa.Column(sa.DateTime, nullable=True)  # Ngày tạo
+    
+    # Thông tin người thân khẩn cấp
+    emergency_contact_name = sa.Column(sa.String(100), nullable=True)  # Tên người thân
+    emergency_contact_phone = sa.Column(sa.String(20), nullable=True)  # SĐT người thân
+    emergency_contact_relationship = sa.Column(sa.String(50), nullable=True)  # Mối quan hệ
+    emergency_contact_zalo_id = sa.Column(sa.String(100), nullable=True)  # Zalo ID người thân
+    notification_delay_minutes = sa.Column(sa.Integer, nullable=False, default=15)  # Thời gian chờ thông báo
     medicines = db.relationship('Medicine', backref='user', lazy=True)
     schedules = db.relationship('Schedule', backref='user', lazy=True)
 
@@ -108,3 +115,21 @@ class MedicineHistory(db.Model):
     timestamp = sa.Column(sa.DateTime, nullable=False)
     status = sa.Column(sa.String(20), nullable=False)  # taken, missed, late
     notes = sa.Column(sa.Text)
+
+class NotificationHistory(db.Model):
+    __tablename__ = 'notification_history'
+    
+    id = sa.Column(sa.Integer, primary_key=True)
+    user_id = sa.Column(sa.Integer, sa.ForeignKey('users.id'), nullable=False)
+    schedule_id = sa.Column(sa.Integer, sa.ForeignKey('schedules.id'), nullable=True)
+    notification_type = sa.Column(sa.String(50), nullable=False)  # missed_medicine, emergency, reminder
+    recipient_phone = sa.Column(sa.String(20), nullable=True)
+    recipient_zalo_id = sa.Column(sa.String(100), nullable=True)
+    message_content = sa.Column(sa.Text, nullable=True)
+    delivery_status = sa.Column(sa.String(20), nullable=False, default='pending')  # pending, sent, failed
+    sent_at = sa.Column(sa.DateTime, nullable=False)
+    error_message = sa.Column(sa.Text, nullable=True)
+    
+    # Relationships
+    user = db.relationship('User', backref='notifications')
+    schedule = db.relationship('Schedule', backref='notifications')

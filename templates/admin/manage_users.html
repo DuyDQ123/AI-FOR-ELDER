@@ -6,9 +6,14 @@
         <div class="col-12">
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <h2 class="mb-0">Quản Lý Người Dùng</h2>
-                <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#createUserModal">
-                    <i class="fas fa-plus"></i> Tạo Tài Khoản Mới
-                </button>
+                <div class="btn-group">
+                    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#createUserModal">
+                        <i class="fas fa-plus"></i> Tạo Tài Khoản Mới
+                    </button>
+                    <button class="btn btn-info" data-bs-toggle="modal" data-bs-target="#testEmailModal">
+                        <i class="fas fa-envelope-open-text"></i> Test Email
+                    </button>
+                </div>
             </div>
             
             {% with messages = get_flashed_messages(with_categories=true) %}
@@ -112,128 +117,120 @@
     </div>
 </div>
 
-<!-- Modal Tạo Tài Khoản Mới -->
-<div class="modal fade" id="createUserModal" tabindex="-1" aria-labelledby="createUserModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
+<!-- Include form tạo user đầy đủ -->
+{% include 'admin/create_user_form.html' %}
+
+<!-- Modal Test Email Notification -->
+<div class="modal fade" id="testEmailModal" tabindex="-1">
+    <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title" id="createUserModalLabel">
-                    <i class="fas fa-user-plus"></i> Tạo Tài Khoản Người Dùng Mới
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-envelope-open-text"></i> Test Email Notification
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <form method="POST" action="{{ url_for('main.create_user_full') }}" id="createUserForm">
-                <div class="modal-body">
-                    <div class="row">
-                        <!-- Thông tin đăng nhập -->
-                        <div class="col-md-6">
-                            <h6 class="text-primary mb-3"><i class="fas fa-key"></i> Thông Tin Đăng Nhập</h6>
-                            
-                            <div class="mb-3">
-                                <label for="username" class="form-label">Tên đăng nhập <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" id="username" name="username" required>
-                                <div class="form-text">Tên đăng nhập để truy cập hệ thống</div>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="email" class="form-label">Email <span class="text-danger">*</span></label>
-                                <input type="email" class="form-control" id="email" name="email" required>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="password" class="form-label">Mật khẩu <span class="text-danger">*</span></label>
-                                <input type="password" class="form-control" id="password" name="password" required>
-                                <div class="form-text">Tối thiểu 6 ký tự</div>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="role" class="form-label">Vai trò <span class="text-danger">*</span></label>
-                                <select class="form-select" id="role" name="role" required>
-                                    <option value="user" selected>Người dùng</option>
-                                    <option value="admin">Quản trị viên</option>
-                                </select>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="user_type" class="form-label">Loại người dùng</label>
-                                <select class="form-select" id="user_type" name="user_type">
-                                    <option value="patient" selected>Bệnh nhân</option>
-                                    <option value="caregiver">Người chăm sóc</option>
-                                </select>
-                            </div>
-                        </div>
-                        
-                        <!-- Thông tin cá nhân -->
-                        <div class="col-md-6">
-                            <h6 class="text-info mb-3"><i class="fas fa-user"></i> Thông Tin Cá Nhân</h6>
-                            
-                            <div class="mb-3">
-                                <label for="full_name" class="form-label">Họ và tên</label>
-                                <input type="text" class="form-control" id="full_name" name="full_name">
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="age" class="form-label">Tuổi</label>
-                                <input type="number" class="form-control" id="age" name="age" min="1" max="120">
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="phone" class="form-label">Số điện thoại</label>
-                                <input type="tel" class="form-control" id="phone" name="phone">
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="address" class="form-label">Địa chỉ</label>
-                                <textarea class="form-control" id="address" name="address" rows="3"></textarea>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="alert alert-info">
-                        <i class="fas fa-info-circle"></i>
-                        <strong>Lưu ý:</strong> Tài khoản sẽ được tạo với trạng thái "Hoạt động".
-                        Người dùng có thể cập nhật thông tin cá nhân sau khi đăng nhập.
-                    </div>
+            
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>Test hệ thống thông báo email:</strong> Gửi email thử nghiệm để kiểm tra cấu hình.
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                        <i class="fas fa-times"></i> Hủy
-                    </button>
-                    <button type="submit" class="btn btn-success">
-                        <i class="fas fa-save"></i> Tạo Tài Khoản
-                    </button>
+                
+                <div class="mb-3">
+                    <label class="form-label">Email nhận thử nghiệm <span class="text-danger">*</span></label>
+                    <input type="email" class="form-control" id="testEmail" placeholder="test@gmail.com" required>
+                    <small class="text-muted">Email sẽ nhận thông báo test</small>
                 </div>
-            </form>
+                
+                <div class="mb-3">
+                    <label class="form-label">Số điện thoại SMS (tùy chọn)</label>
+                    <input type="tel" class="form-control" id="testPhone" placeholder="0987654321">
+                    <small class="text-muted">Để test SMS backup nếu có cấu hình</small>
+                </div>
+                
+                <div id="testResult" class="mt-3" style="display: none;"></div>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times"></i> Đóng
+                </button>
+                <button type="button" class="btn btn-info" onclick="sendTestEmail()">
+                    <i class="fas fa-paper-plane"></i> Gửi Test Email
+                </button>
+            </div>
         </div>
     </div>
 </div>
 
 <script>
-// Validation form
-document.getElementById('createUserForm').addEventListener('submit', function(e) {
-    const password = document.getElementById('password').value;
-    const username = document.getElementById('username').value;
-    const email = document.getElementById('email').value;
+// Function để test email notification
+function sendTestEmail() {
+    const email = document.getElementById('testEmail').value;
+    const phone = document.getElementById('testPhone').value;
+    const resultDiv = document.getElementById('testResult');
     
-    if (password.length < 6) {
-        e.preventDefault();
-        alert('Mật khẩu phải có ít nhất 6 ký tự');
+    if (!email) {
+        alert('Vui lòng nhập email để test!');
         return;
     }
     
-    if (username.length < 3) {
-        e.preventDefault();
-        alert('Tên đăng nhập phải có ít nhất 3 ký tự');
-        return;
-    }
+    // Show loading
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = '<div class="alert alert-info"><i class="fas fa-spinner fa-spin"></i> Đang gửi email test...</div>';
     
-    // Email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-        e.preventDefault();
-        alert('Email không hợp lệ');
-        return;
-    }
+    // Send test email
+    fetch('/api/test_email_notification', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            email: email,
+            phone: phone || null
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            let resultHtml = '<div class="alert alert-success"><h6><i class="fas fa-check"></i> Kết quả test:</h6><ul class="mb-0">';
+            
+            // Email result
+            if (data.results.email) {
+                if (data.results.email.success) {
+                    resultHtml += '<li><strong>✅ Email:</strong> Gửi thành công!</li>';
+                } else {
+                    resultHtml += '<li><strong>❌ Email:</strong> ' + data.results.email.message + '</li>';
+                }
+            }
+            
+            // SMS result
+            if (data.results.sms) {
+                if (data.results.sms.success) {
+                    resultHtml += '<li><strong>✅ SMS:</strong> Gửi thành công!</li>';
+                } else {
+                    resultHtml += '<li><strong>❌ SMS:</strong> ' + data.results.sms.message + '</li>';
+                }
+            }
+            
+            resultHtml += '</ul></div>';
+            resultDiv.innerHTML = resultHtml;
+        } else {
+            resultDiv.innerHTML = '<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> <strong>Lỗi:</strong> ' + data.error + '</div>';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        resultDiv.innerHTML = '<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> <strong>Lỗi kết nối:</strong> Không thể gửi test email</div>';
+    });
+}
+
+// Clear test result when modal closes
+document.getElementById('testEmailModal').addEventListener('hidden.bs.modal', function() {
+    document.getElementById('testResult').style.display = 'none';
+    document.getElementById('testEmail').value = '';
+    document.getElementById('testPhone').value = '';
 });
 </script>
 {% endblock %}

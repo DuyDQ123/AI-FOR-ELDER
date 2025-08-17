@@ -1,10 +1,12 @@
 from flask import Blueprint, render_template, request, redirect, url_for, jsonify
 from flask_login import login_required, current_user
 from flask import flash
-from models import db, Medicine, Schedule, MedicineHistory, User, SystemConfig, AdminLog
+from models import db, Medicine, Schedule, MedicineHistory, User, SystemConfig, AdminLog, NotificationHistory
 from datetime import datetime, timedelta
 from auth import require_api_key, admin_required, super_admin_required, user_active_required
 from werkzeug.security import generate_password_hash
+from zalo_service import zalo_service
+import re
 
 main = Blueprint('main', __name__)
 
@@ -81,7 +83,7 @@ def create_user():
 @main.route('/admin/create-user-full', methods=['POST'])
 @admin_required
 def create_user_full():
-    """Tạo tài khoản người dùng với đầy đủ thông tin"""
+    """Tạo tài khoản người dùng với đầy đủ thông tin bao gồm người thân khẩn cấp"""
     try:
         # Lấy thông tin đăng nhập
         username = request.form.get('username')
@@ -96,7 +98,14 @@ def create_user_full():
         phone = request.form.get('phone')
         address = request.form.get('address')
 
-        # Validation
+        # Lấy thông tin người thân khẩn cấp
+        emergency_contact_name = request.form.get('emergency_contact_name')
+        emergency_contact_phone = request.form.get('emergency_contact_phone')
+        emergency_contact_relationship = request.form.get('emergency_contact_relationship')
+        emergency_contact_zalo_id = request.form.get('emergency_contact_zalo_id')
+        notification_delay_minutes = request.form.get('notification_delay_minutes', 15)
+
+        # Validation cơ bản
         if not username or not email or not password:
             flash('Vui lòng điền đầy đủ thông tin bắt buộc (tên đăng nhập, email, mật khẩu)', 'error')
             return redirect(url_for('main.user_management'))
@@ -109,6 +118,17 @@ def create_user_full():
             flash('Vai trò không hợp lệ', 'error')
             return redirect(url_for('main.user_management'))
 
+        # Validation thông tin người thân
+        if not emergency_contact_name or not emergency_contact_phone:
+            flash('Vui lòng điền đầy đủ thông tin người thân khẩn cấp', 'error')
+            return redirect(url_for('main.user_management'))
+
+        # Kiểm tra format số điện thoại
+        phone_pattern = r'^[0-9]{10,11}$'
+        if not re.match(phone_pattern, emergency_contact_phone):
+            flash('Số điện thoại người thân không hợp lệ (phải là 10-11 chữ số)', 'error')
+            return redirect(url_for('main.user_management'))
+
         # Kiểm tra trùng lặp
         if User.query.filter_by(username=username).first():
             flash('Tên đăng nhập đã tồn tại', 'error')
@@ -118,7 +138,7 @@ def create_user_full():
             flash('Email đã được sử dụng', 'error')
             return redirect(url_for('main.user_management'))
 
-        # Tạo user mới
+        # Tạo user mới với thông tin người thân
         new_user = User(
             username=username,
             email=email,
@@ -130,7 +150,13 @@ def create_user_full():
             full_name=full_name if full_name else None,
             age=int(age) if age else None,
             phone=phone if phone else None,
-            address=address if address else None
+            address=address if address else None,
+            # Thông tin người thân khẩn cấp
+            emergency_contact_name=emergency_contact_name,
+            emergency_contact_phone=emergency_contact_phone,
+            emergency_contact_relationship=emergency_contact_relationship,
+            emergency_contact_zalo_id=emergency_contact_zalo_id if emergency_contact_zalo_id else None,
+            notification_delay_minutes=int(notification_delay_minutes)
         )
         new_user.set_password(password)
 
@@ -140,22 +166,23 @@ def create_user_full():
         # Ghi log
         log = AdminLog(
             admin_id=current_user.id,
-            action='create_user_full',
+            action='create_user_with_emergency_contact',
             target_type='user',
             target_id=new_user.id,
-            details=f'Created user {username} (email: {email}) with role {role}',
+            details=f'Created user {username} with emergency contact {emergency_contact_name} ({emergency_contact_phone})',
             timestamp=datetime.now()
         )
         db.session.add(log)
         db.session.commit()
 
-        flash(f'Đã tạo thành công tài khoản cho {full_name or username}', 'success')
+        flash(f'Đã tạo thành công tài khoản cho {full_name or username} với người liên hệ khẩn cấp {emergency_contact_name}', 'success')
         return redirect(url_for('main.user_management'))
 
     except ValueError as e:
         flash('Tuổi phải là số hợp lệ', 'error')
         return redirect(url_for('main.user_management'))
     except Exception as e:
+        db.session.rollback()
         flash(f'Lỗi khi tạo tài khoản: {str(e)}', 'error')
         return redirect(url_for('main.user_management'))
 
@@ -669,19 +696,24 @@ def get_current_schedules(user_id):
         if existing_history:
             continue
         
-        # Kiem tra thoi gian (trong vong 2 phut)
-        if abs((schedule_datetime - current_time).total_seconds()) <= 120:
-            medicine = Medicine.query.get(schedule.medicine_id)
-            if medicine:
-                current_schedules.append({
-                    'schedule_id': schedule.id,
-                    'medicine_id': medicine.id,
-                    'medicine_name': medicine.name,
-                    'compartment_number': medicine.compartment_number,
-                    'time': schedule.time,
-                    'dosage': medicine.dosage,
-                    'notes': medicine.notes
-                })
+        # FIXED TIMING LOGIC: Chi kich hoat tu dung gio den 2 phut sau (KHONG kich hoat som)
+        time_diff = (current_time - schedule_datetime).total_seconds()
+        if 0 <= time_diff <= 120:  # Tu dung gio (0s) den 2 phut sau (120s)
+            # Kiem tra xem co phai trong khoang thoi gian dau tien cua schedule khong
+            # De tranh kich hoat lien tuc moi 5 giay
+            if time_diff <= 10:  # Chi return trong 10 giay dau
+                medicine = Medicine.query.get(schedule.medicine_id)
+                if medicine:
+                    current_schedules.append({
+                        'schedule_id': schedule.id,
+                        'medicine_id': medicine.id,
+                        'medicine_name': medicine.name,
+                        'compartment_number': medicine.compartment_number,
+                        'time': schedule.time,
+                        'dosage': medicine.dosage,
+                        'notes': medicine.notes,
+                        'time_diff': time_diff  # Debug info
+                    })
     
     return current_schedules
 
@@ -945,3 +977,129 @@ def system_power_control():
     except Exception as e:
         flash(f'Lỗi khi tải trang quản lý power: {str(e)}', 'error')
         return redirect(url_for('main.admin_logs'))
+
+# ============ ZALO NOTIFICATION FUNCTIONS ============
+
+def log_notification_to_db(user_id: int, notification_type: str, recipient_phone: str = None,
+                          recipient_zalo_id: str = None, message_content: str = None,
+                          delivery_status: str = 'pending', schedule_id: int = None,
+                          error_message: str = None):
+    """
+    Ghi log thông báo vào database
+    
+    Args:
+        user_id: ID của user
+        notification_type: Loại thông báo (missed_medicine, emergency, test)
+        recipient_phone: SĐT người nhận
+        recipient_zalo_id: Zalo ID người nhận
+        message_content: Nội dung tin nhắn
+        delivery_status: Trạng thái gửi (pending, sent, failed)
+        schedule_id: ID của schedule (nếu có)
+        error_message: Thông báo lỗi (nếu có)
+    """
+    try:
+        notification_log = NotificationHistory(
+            user_id=user_id,
+            schedule_id=schedule_id,
+            notification_type=notification_type,
+            recipient_phone=recipient_phone,
+            recipient_zalo_id=recipient_zalo_id,
+            message_content=message_content,
+            delivery_status=delivery_status,
+            sent_at=datetime.now(),
+            error_message=error_message
+        )
+        
+        db.session.add(notification_log)
+        db.session.commit()
+        
+        print(f"✅ Đã ghi log notification vào database - User: {user_id}, Type: {notification_type}, Status: {delivery_status}")
+        return notification_log.id
+        
+    except Exception as e:
+        print(f"❌ Lỗi ghi log notification: {str(e)}")
+        return None
+
+@main.route('/api/test_email_notification', methods=['POST'])
+@admin_required
+def test_email_notification():
+    """API để test gửi thông báo Email (thay thế Zalo)"""
+    try:
+        data = request.get_json()
+        
+        test_email = data.get('email')
+        phone = data.get('phone')
+        
+        if not test_email and not phone:
+            return jsonify({'error': 'Cần ít nhất email hoặc số điện thoại để test'}), 400
+        
+        # Test gửi thông báo
+        results = zalo_service.send_test_notification(test_email, phone)
+        
+        # Ghi log vào database
+        if test_email:
+            log_notification_to_db(
+                user_id=current_user.id,
+                notification_type='test',
+                recipient_zalo_id=test_email,  # Dùng lại field này cho email
+                message_content='Test email notification',
+                delivery_status='sent' if results['email']['success'] else 'failed',
+                error_message=results['email']['message'] if not results['email']['success'] else None
+            )
+        
+        if phone:
+            log_notification_to_db(
+                user_id=current_user.id,
+                notification_type='test',
+                recipient_phone=phone,
+                message_content='Test SMS notification',
+                delivery_status='sent' if results['sms']['success'] else 'failed',
+                error_message=results['sms']['message'] if not results['sms']['success'] else None
+            )
+        
+        return jsonify({
+            'success': True,
+            'results': results,
+            'message': 'Test notification completed'
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Lỗi test notification: {str(e)}'}), 500
+
+# Giữ API cũ để tương thích
+@main.route('/api/test_zalo_notification', methods=['POST'])
+@admin_required
+def test_zalo_notification():
+    """API cũ để test - redirect to email"""
+    return test_email_notification()
+
+@main.route('/api/notification_history/<int:user_id>', methods=['GET'])
+@admin_required
+def get_notification_history(user_id):
+    """API để xem lịch sử thông báo của user"""
+    try:
+        # Lấy 50 notification gần nhất
+        notifications = NotificationHistory.query.filter_by(user_id=user_id)\
+            .order_by(NotificationHistory.sent_at.desc())\
+            .limit(50).all()
+        
+        result = []
+        for notif in notifications:
+            result.append({
+                'id': notif.id,
+                'type': notif.notification_type,
+                'recipient_phone': notif.recipient_phone,
+                'recipient_zalo_id': notif.recipient_zalo_id,
+                'delivery_status': notif.delivery_status,
+                'sent_at': notif.sent_at.isoformat(),
+                'error_message': notif.error_message
+            })
+        
+        return jsonify({
+            'success': True,
+            'notifications': result,
+            'total': len(result)
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Lỗi lấy lịch sử thông báo: {str(e)}'}), 500
