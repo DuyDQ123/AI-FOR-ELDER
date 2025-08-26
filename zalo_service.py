@@ -190,13 +190,19 @@ Automated email - {current_time}
             msg.attach(part1)
             msg.attach(part2)
 
-            # Send email
+            # Send email with detailed logging
+            logger.info(f" Connecting to Gmail SMTP server...")
             with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+                logger.info(f" Starting TLS encryption...")
                 server.starttls()
+                
+                logger.info(f" Authenticating with Gmail...")
                 server.login(self.email_user, self.email_password)
+                
+                logger.info(f" Sending email to {to_email}...")
                 server.send_message(msg)
 
-            logger.info(f"Email sent successfully to {to_email}")
+            logger.info(f" Email sent successfully to {to_email}")
             return True
 
         except smtplib.SMTPAuthenticationError:

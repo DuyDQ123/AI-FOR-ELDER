@@ -165,19 +165,19 @@ class TestRaspberryPiHandler:
                                 print(f"Note: {notes}")
                             print("=" * 60)
 
-                            # Open the compartment
+                         
                             print(f"Opening compartment {compartment}...")
                             self.set_servo_angle(compartment, SERVO_OPEN)
                             print(f"Compartment {compartment} opened to 90 degrees for 2 seconds")
 
-                            # Close the compartment
+ 
                             self.set_servo_angle(compartment, SERVO_CLOSED)
                             print(f"Compartment {compartment} closed")
 
                             print("\nPLEASE PRESS THE CONFIRM BUTTON AFTER TAKING THE MEDICINE!")
                             print("Waiting for confirmation...")
 
-                            # Setup emergency notification timer
+                     
                             self.setup_notification_timer(schedule_id, medicine_name, compartment)
 
                             self.start_reminder_timer()
@@ -197,14 +197,16 @@ class TestRaspberryPiHandler:
     def start_reminder_timer(self):
         """Start reminder thread to alert if user hasn't confirmed"""
         def reminder_loop():
-            time.sleep(30)
-            if self.is_alerting:
+            import pygame
+            pygame.mixer.init()
+            pygame.mixer.music.load("beep.mp3")  
+            
+            while self.is_alerting:
+                pygame.mixer.music.play()
                 print("\nREMINDER: Please press the confirm button after taking your medicine!")
-                time.sleep(60)
-                if self.is_alerting:
-                    print("WARNING: 1 minute 30 seconds passed without confirmation!")
-                    print(f"Medicine: {self.current_medicine}")
-                    print(f"Compartment: {self.current_compartment}")
+                time.sleep(5)  
+
+            pygame.mixer.music.stop()
 
         reminder_thread = threading.Thread(target=reminder_loop)
         reminder_thread.daemon = True
@@ -355,11 +357,11 @@ class TestRaspberryPiHandler:
             
             if response.status_code == 200:
                 user_info = response.json()
-                notification_delay = user_info.get('notification_delay_minutes', 15)
+                notification_delay = user_info.get('user_info', {}).get('notification_delay_minutes', 15)
                 
-                # Save pending notification info - use direct access to root level fields
+                # Save pending notification info
                 self.pending_notifications[schedule_id] = {
-                    'user_info': user_info,  # Store full user_info at root level
+                    'user_info': user_info.get('user_info', {}),
                     'medicine_name': medicine_name,
                     'compartment': compartment,
                     'alert_time': time.time(),
@@ -413,9 +415,7 @@ class TestRaspberryPiHandler:
             compartment = notification_info['compartment']
             
             print(f"\nSENDING EMERGENCY NOTIFICATION")
-            # Access user info from nested structure or direct access
-            user_name = user_info.get('user_info', {}).get('full_name') or user_info.get('full_name', 'Unknown')
-            print(f"User: {user_name}")
+            print(f"User: {user_info.get('full_name', 'Unknown')}")
             print(f"Medicine: {medicine_name}")
             print(f"Emergency Contact: {user_info.get('emergency_contact_name', 'Unknown')}")
             print(f"Contact Phone: {user_info.get('emergency_contact_phone', 'Unknown')}")
@@ -493,4 +493,3 @@ if __name__ == "__main__":
         print("Thank you for using the system!")
 
         handler.cleanup()
-

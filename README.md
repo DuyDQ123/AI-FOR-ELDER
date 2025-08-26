@@ -111,11 +111,6 @@ http://localhost:5000
 - Xem status hệ thống tại /status
 - Báo lỗi qua GitHub Issues
 
-### Liên Hệ
-- Email: support@example.com
-- Website: http://example.com
-- GitHub: http://github.com/example
-
 ## Cập Nhật
 
 ### Phiên Bản Mới

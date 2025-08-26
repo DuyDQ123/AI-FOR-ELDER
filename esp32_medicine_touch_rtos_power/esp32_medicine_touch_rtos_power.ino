@@ -1,831 +1,684 @@
+/*
+  ESP32 Medicine Reminder - WITH MULTITHREADING
+  Sử dụng FreeRTOS tasks để xử lý parallel
+*/
+
 #include <WiFi.h>
 #include <HTTPClient.h>
-#include <ArduinoJson.h>
 #include <TFT_eSPI.h>
-#include <SPI.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/queue.h"
-#include "freertos/semphr.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/queue.h>
+#include <freertos/semphr.h>
 
-// WiFi Configuration
-const char* apiKey = "my-secret-key-2025";
+// Cấu hình WiFi và Server
 const char* ssid = "duy";
 const char* password = "11111111";
-const char* serverURL = "http://192.168.1.159:5000";  // Cập nhật IP đúng
-const int userId = 13;
-// TFT Display
+const char* serverURL = "http://172.20.10.2:5000";
+const int userId = 15;
+
 TFT_eSPI tft = TFT_eSPI();
 
-// Device State Management
-enum DeviceState {
-  SLEEP_MODE,      // Screen off, minimal API checks
-  ACTIVE_MODE,     // Medicine notification active
-  CONFIRMED_MODE   // User confirmed, preparing to sleep
-};
-
-DeviceState currentState = SLEEP_MODE;
-
-// FreeRTOS Components
-TaskHandle_t stateManagerTaskHandle = NULL;
-TaskHandle_t apiTaskHandle = NULL;
+// FreeRTOS handles
+TaskHandle_t networkTaskHandle = NULL;
 TaskHandle_t displayTaskHandle = NULL;
-TaskHandle_t buttonTaskHandle = NULL;
+TaskHandle_t touchTaskHandle = NULL;
+TaskHandle_t systemTaskHandle = NULL;
 
-QueueHandle_t buttonQueue;
+// Queues for inter-task communication
 QueueHandle_t displayQueue;
-QueueHandle_t apiQueue;
+QueueHandle_t networkQueue;
 
-SemaphoreHandle_t stateMutex;
-SemaphoreHandle_t displayMutex;
+// Semaphores for resource protection
+SemaphoreHandle_t tftMutex;
+SemaphoreHandle_t wifiMutex;
 
-// Message Types for Queues
-enum MessageType {
-  MSG_BUTTON_CONFIRM,
-  MSG_BUTTON_INFO,
-  MSG_API_SCHEDULE_FOUND,
-  MSG_API_NO_SCHEDULE,
-  MSG_DISPLAY_MEDICINE,
-  MSG_DISPLAY_INFO,
-  MSG_DISPLAY_SYSTEM,
-  MSG_DISPLAY_OFF,
-  MSG_STATE_CHANGE
+// Shared data structures
+struct DisplayMessage {
+  String type;      // "alert", "info", "main", "error"
+  String data;      // JSON data or message
+  int priority;     // 1=high, 2=medium, 3=low
 };
 
-struct Message {
-  MessageType type;
-  String data;
-  int value;
+struct NetworkRequest {
+  String type;      // "check_medicine", "check_info", "check_confirmation", "user_profile", "clear_flag"
+  String endpoint;
+  int param;        // flag_id, user_id, etc.
 };
 
-// Timing Configuration
-const unsigned long SLEEP_API_INTERVAL = 30000;    // 30 seconds in sleep
-const unsigned long ACTIVE_API_INTERVAL = 5000;    // 5 seconds when active
-const unsigned long ACTIVITY_TIMEOUT = 180000;     // 3 minutes timeout
-const unsigned long DEBOUNCE_DELAY = 2000;         // 2 seconds button debounce
-const unsigned long CONFIRMED_DELAY = 5000;        // 5 seconds before sleep after confirm
-const unsigned long MIN_SLEEP_TIME = 300000;       // 5 minutes minimum sleep after confirm
+// System state
+bool alertActive = false;
+String medicine = "";
+int compartmentNum = 0;
+int scheduleId = 0;
+int currentConfirmationId = 0;
 
-// Button Configuration
-const int CONFIRM_BUTTON_PIN = 0;  // BOOT button
-const int INFO_BUTTON_PIN = 35;    // Touch or additional button
+// Touch areas
+struct TouchArea {
+  int x, y, w, h;
+  String name;
+};
 
-// Session Management
-bool sessionActive = false;
-bool medicineConfirmed = false;
-String currentMedicineName = "";
-int currentCompartment = 0;
-
-// Anti-spam Protection
-volatile bool buttonPressed = false;
-unsigned long lastConfirmTime = 0;
-unsigned long lastActivity = 0;
-
-// Power Management
-bool screenOn = true;
-bool wifiConnected = false;
-bool systemEnabled = true;  // Track system power status
-unsigned long lastSystemCheck = 0;
-const unsigned long SYSTEM_CHECK_INTERVAL = 5000;  // Check system status every 15 seconds
+TouchArea checkButton = {20, 130, 130, 40, "CHECK"};
+TouchArea infoButton = {170, 130, 130, 40, "INFO"};
+TouchArea confirmButton = {30, 130, 260, 45, "CONFIRM"};
 
 void setup() {
   Serial.begin(115200);
+  Serial.println("Starting ESP32 Multithreaded Medicine System...");
   
-  // Initialize display
+  // Khởi tạo hardware
+  pinMode(21, OUTPUT);
+  digitalWrite(21, HIGH);
+  
   tft.init();
   tft.setRotation(1);
   tft.fillScreen(TFT_BLACK);
   
-  // Initialize buttons
-  pinMode(CONFIRM_BUTTON_PIN, INPUT_PULLUP);
-  pinMode(INFO_BUTTON_PIN, INPUT_PULLUP);
+  tft.setTextColor(TFT_WHITE);
+  tft.setTextSize(2);
+  tft.drawString("KHOI DONG...", 80, 100);
   
-  // Create FreeRTOS components
-  createQueues();
-  createSemaphores();
+  // Kết nối WiFi
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+  Serial.println("WiFi connected!");
   
-  // Connect to WiFi
-  connectToWiFi();
+  // Tạo mutexes và queues
+  tftMutex = xSemaphoreCreateMutex();
+  wifiMutex = xSemaphoreCreateMutex();
+  displayQueue = xQueueCreate(10, sizeof(DisplayMessage));
+  networkQueue = xQueueCreate(10, sizeof(NetworkRequest));
   
-  // Create RTOS tasks
-  createTasks();
+  if (tftMutex == NULL || wifiMutex == NULL || displayQueue == NULL || networkQueue == NULL) {
+    Serial.println("Failed to create mutexes/queues!");
+    return;
+  }
   
-  Serial.println("ESP32 Medicine Reminder with RTOS Power Management Started");
+  // Tạo tasks
+  xTaskCreatePinnedToCore(
+    networkTask,
+    "NetworkTask",
+    8192,  // Stack size
+    NULL,
+    2,     // Priority
+    &networkTaskHandle,
+    0      // Core 0
+  );
   
-  // Send initial display message
-  Message msg = {MSG_DISPLAY_SYSTEM, "startup", 0};
-  xQueueSend(displayQueue, &msg, 0);
+  xTaskCreatePinnedToCore(
+    displayTask,
+    "DisplayTask", 
+    8192,
+    NULL,
+    3,     // Higher priority for display
+    &displayTaskHandle,
+    1      // Core 1
+  );
+  
+  xTaskCreatePinnedToCore(
+    touchTask,
+    "TouchTask",
+    4096,
+    NULL,
+    2,
+    &touchTaskHandle,
+    1      // Core 1
+  );
+  
+  xTaskCreatePinnedToCore(
+    systemTask,
+    "SystemTask",
+    4096, 
+    NULL,
+    1,     // Lower priority
+    &systemTaskHandle,
+    0      // Core 0
+  );
+  
+  Serial.println("All tasks created successfully!");
+  
+  // Hiển thị main screen
+  DisplayMessage msg;
+  msg.type = "main";
+  msg.data = "";
+  msg.priority = 2;
+  xQueueSend(displayQueue, &msg, portMAX_DELAY);
 }
 
 void loop() {
-  // FreeRTOS handles everything, main loop can be minimal
+  // Main loop rất nhẹ, chỉ monitor system
   vTaskDelay(pdMS_TO_TICKS(1000));
-}
-
-void createQueues() {
-  buttonQueue = xQueueCreate(10, sizeof(Message));
-  displayQueue = xQueueCreate(10, sizeof(Message));
-  apiQueue = xQueueCreate(5, sizeof(Message));
   
-  if (!buttonQueue || !displayQueue || !apiQueue) {
-    Serial.println("Failed to create queues!");
-    ESP.restart();
+  // Print free heap periodically
+  static unsigned long lastHeapPrint = 0;
+  if (millis() - lastHeapPrint > 30000) {
+    Serial.println("Free heap: " + String(ESP.getFreeHeap()));
+    lastHeapPrint = millis();
   }
 }
 
-void createSemaphores() {
-  stateMutex = xSemaphoreCreateMutex();
-  displayMutex = xSemaphoreCreateMutex();
-  
-  if (!stateMutex || !displayMutex) {
-    Serial.println("Failed to create semaphores!");
-    ESP.restart();
-  }
-}
-
-void createTasks() {
-  // State Manager Task - Core 1, High Priority (reduced stack)
-  xTaskCreatePinnedToCore(
-    stateManagerTask,
-    "StateManager",
-    3072,
-    NULL,
-    3,
-    &stateManagerTaskHandle,
-    1
-  );
-  
-  // API Task - Core 0, Medium Priority (reduced stack)
-  xTaskCreatePinnedToCore(
-    apiTask,
-    "APITask",
-    6144,
-    NULL,
-    2,
-    &apiTaskHandle,
-    0
-  );
-  
-  // Display Task - Core 1, Medium Priority (reduced stack)
-  xTaskCreatePinnedToCore(
-    displayTask,
-    "DisplayTask",
-    3072,
-    NULL,
-    2,
-    &displayTaskHandle,
-    1
-  );
-  
-  // Button Task - Core 1, High Priority (reduced stack)
-  xTaskCreatePinnedToCore(
-    buttonTask,
-    "ButtonTask",
-    1536,
-    NULL,
-    4,
-    &buttonTaskHandle,
-    1
-  );
-  
-  Serial.println("All RTOS tasks created successfully");
-  logMemoryUsage("After task creation");
-}
-
-void stateManagerTask(void *parameter) {
-  Message msg;
-  TickType_t lastWakeTime = xTaskGetTickCount();
+// NETWORK TASK - Handle all HTTP requests
+void networkTask(void *parameter) {
+  NetworkRequest req;
   
   while (true) {
-    // Check for messages from other tasks
-    if (xQueueReceive(buttonQueue, &msg, pdMS_TO_TICKS(100)) == pdTRUE) {
-      handleStateMessage(msg);
+    // Check for network requests
+    if (xQueueReceive(networkQueue, &req, pdMS_TO_TICKS(100)) == pdPASS) {
+      processNetworkRequest(req);
     }
     
-    if (xQueueReceive(apiQueue, &msg, 0) == pdTRUE) {
-      handleStateMessage(msg);
+    // Auto-schedule periodic checks
+    static unsigned long lastMedicineCheck = 0;
+    static unsigned long lastInfoCheck = 0;
+    static unsigned long lastConfirmCheck = 0;
+    
+    unsigned long now = millis();
+    
+    // Check medicine schedule every 5 seconds
+    if (now - lastMedicineCheck > 5000) {
+      NetworkRequest medicineReq;
+      medicineReq.type = "check_medicine";
+      medicineReq.endpoint = "/api/check_schedule_by_user/" + String(userId);
+      medicineReq.param = userId;
+      
+      processNetworkRequest(medicineReq);
+      lastMedicineCheck = now;
     }
     
-    // State-specific logic
-    xSemaphoreTake(stateMutex, portMAX_DELAY);
-    
-    switch (currentState) {
-      case SLEEP_MODE:
-        handleSleepState();
-        break;
-        
-      case ACTIVE_MODE:
-        handleActiveState();
-        break;
-        
-      case CONFIRMED_MODE:
-        handleConfirmedState();
-        break;
+    // Check INFO flag every 4 seconds
+    if (now - lastInfoCheck > 4000) {
+      NetworkRequest infoReq;
+      infoReq.type = "check_info";
+      infoReq.endpoint = "/api/check_info_flag/" + String(userId);
+      infoReq.param = userId;
+      
+      processNetworkRequest(infoReq);
+      lastInfoCheck = now;
     }
     
-    xSemaphoreGive(stateMutex);
+    // Check Pi confirmation every 2 seconds when alert active
+    if (alertActive && (now - lastConfirmCheck > 2000)) {
+      NetworkRequest confirmReq;
+      confirmReq.type = "check_confirmation";
+      confirmReq.endpoint = "/api/check_confirmation_status/" + String(userId);
+      confirmReq.param = userId;
+      
+      processNetworkRequest(confirmReq);
+      lastConfirmCheck = now;
+    }
     
-    // Run every 100ms
-    vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(100));
+    vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
 
-void apiTask(void *parameter) {
-  TickType_t lastAPICheck = 0;
-  
-  while (true) {
-    TickType_t currentTick = xTaskGetTickCount();
-    unsigned long interval;
-    
-    // Check system status periodically
-    if (millis() - lastSystemCheck >= SYSTEM_CHECK_INTERVAL) {
-      checkSystemStatus();
-      lastSystemCheck = millis();
-    }
-    
-    // Skip medicine schedule check if system is disabled
-    if (!systemEnabled) {
-      Serial.println("RTOS: System disabled - skipping schedule check");
-      vTaskDelay(pdMS_TO_TICKS(5000));
-      continue;
-    }
-    
-    // Determine API check interval based on state
-    xSemaphoreTake(stateMutex, portMAX_DELAY);
-    if (currentState == SLEEP_MODE) {
-      interval = SLEEP_API_INTERVAL;
-    } else {
-      interval = ACTIVE_API_INTERVAL;
-    }
-    xSemaphoreGive(stateMutex);
-    
-    // Check if it's time for API call
-    if (currentTick - lastAPICheck >= pdMS_TO_TICKS(interval)) {
-      lastAPICheck = currentTick;
-      
-      bool hasSchedule = checkForMedicineSchedule();
-      
-      Message msg;
-      if (hasSchedule) {
-        msg = {MSG_API_SCHEDULE_FOUND, currentMedicineName, currentCompartment};
-      } else {
-        msg = {MSG_API_NO_SCHEDULE, "", 0};
-      }
-      
-      xQueueSend(apiQueue, &msg, 0);
-    }
-    
-    vTaskDelay(pdMS_TO_TICKS(1000));
-  }
-}
-
+// DISPLAY TASK - Handle all TFT operations
 void displayTask(void *parameter) {
-  Message msg;
+  DisplayMessage msg;
   
   while (true) {
-    if (xQueueReceive(displayQueue, &msg, portMAX_DELAY) == pdTRUE) {
-      xSemaphoreTake(displayMutex, portMAX_DELAY);
-      
-      switch (msg.type) {
-        case MSG_DISPLAY_MEDICINE:
-          displayMedicineNotification(msg.data, msg.value);
-          break;
-          
-        case MSG_DISPLAY_INFO:
-          displayUserInfo();
-          break;
-          
-        case MSG_DISPLAY_SYSTEM:
-          displaySystemInfo();
-          break;
-          
-        case MSG_DISPLAY_OFF:
-          turnOffScreen();
-          break;
-          
-        default:
-          break;
+    if (xQueueReceive(displayQueue, &msg, portMAX_DELAY) == pdPASS) {
+      if (xSemaphoreTake(tftMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+        processDisplayMessage(msg);
+        xSemaphoreGive(tftMutex);
       }
-      
-      xSemaphoreGive(displayMutex);
     }
   }
 }
 
-void buttonTask(void *parameter) {
-  bool lastConfirmState = HIGH;
-  bool lastInfoState = HIGH;
-  TickType_t lastDebounceTime = 0;
+// TOUCH TASK - Handle touch and button inputs
+void touchTask(void *parameter) {
+  unsigned long lastTouch = 0;
   
   while (true) {
-    bool confirmState = digitalRead(CONFIRM_BUTTON_PIN);
-    bool infoState = digitalRead(INFO_BUTTON_PIN);
-    TickType_t currentTick = xTaskGetTickCount();
+    // Check touch sensor
+    int touchValue = analogRead(33);
     
-    // Debounce protection
-    if (currentTick - lastDebounceTime < pdMS_TO_TICKS(DEBOUNCE_DELAY)) {
-      vTaskDelay(pdMS_TO_TICKS(50));
-      continue;
+    if (touchValue > 100 && millis() - lastTouch > 300) {
+      lastTouch = millis();
+      
+      int touchX = 160;
+      int touchY = 150;
+      
+      Serial.println("Touch detected at: " + String(touchX) + "," + String(touchY));
+      
+      if (alertActive) {
+        if (isTouchInArea(touchX, touchY, confirmButton)) {
+          handleConfirmTouch();
+        }
+      } else {
+        if (isTouchInArea(touchX, touchY, checkButton)) {
+          handleCheckTouch();
+        } else if (isTouchInArea(touchX, touchY, infoButton)) {
+          handleInfoTouch();
+        }
+      }
     }
     
-    // Confirm button pressed
-    if (lastConfirmState == HIGH && confirmState == LOW) {
-      lastDebounceTime = currentTick;
-      lastActivity = millis();
+    // Check BOOT button
+    if (digitalRead(0) == LOW && millis() - lastTouch > 300) {
+      lastTouch = millis();
+      Serial.println("BOOT button pressed!");
       
-      Message msg = {MSG_BUTTON_CONFIRM, "", 0};
-      xQueueSend(buttonQueue, &msg, 0);
-      
-      Serial.println("RTOS: Confirm button pressed");
+      if (alertActive) {
+        handleConfirmTouch();
+      } else {
+        handleCheckTouch();
+      }
     }
-    
-    // Info button pressed
-    if (lastInfoState == HIGH && infoState == LOW) {
-      lastDebounceTime = currentTick;
-      lastActivity = millis();
-      
-      Message msg = {MSG_BUTTON_INFO, "", 0};
-      xQueueSend(buttonQueue, &msg, 0);
-      
-      Serial.println("RTOS: Info button pressed");
-    }
-    
-    lastConfirmState = confirmState;
-    lastInfoState = infoState;
     
     vTaskDelay(pdMS_TO_TICKS(50));
   }
 }
 
-void handleStateMessage(Message msg) {
-  switch (msg.type) {
-    case MSG_BUTTON_CONFIRM:
-      handleConfirmButton();
-      break;
-      
-    case MSG_BUTTON_INFO:
-      handleInfoButton();
-      break;
-      
-    case MSG_API_SCHEDULE_FOUND:
-      if (currentState == SLEEP_MODE) {
-        currentMedicineName = msg.data;
-        currentCompartment = msg.value;
-        changeState(ACTIVE_MODE);
-      }
-      break;
-      
-    case MSG_API_NO_SCHEDULE:
-      if (currentState == ACTIVE_MODE && !sessionActive) {
-        changeState(SLEEP_MODE);
-      }
-      break;
-      
-    default:
-      break;
+// SYSTEM TASK - System monitoring and maintenance
+void systemTask(void *parameter) {
+  while (true) {
+    // Monitor WiFi connection
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("WiFi disconnected, attempting reconnect...");
+      WiFi.reconnect();
+    }
+    
+    // Memory cleanup if needed
+    if (ESP.getFreeHeap() < 10000) {
+      Serial.println("Low memory warning: " + String(ESP.getFreeHeap()));
+    }
+    
+    vTaskDelay(pdMS_TO_TICKS(5000));
   }
 }
 
-void handleSleepState() {
-  static bool screenTurnedOff = false;
-  
-  if (!screenTurnedOff) {
-    Message msg = {MSG_DISPLAY_OFF, "", 0};
-    xQueueSend(displayQueue, &msg, 0);
-    screenTurnedOff = true;
-  }
-}
-
-void handleActiveState() {
-  static bool medicineDisplayed = false;
-  static unsigned long stateStartTime = 0;
-  
-  if (!medicineDisplayed) {
-    Message msg = {MSG_DISPLAY_MEDICINE, currentMedicineName, currentCompartment};
-    xQueueSend(displayQueue, &msg, 0);
-    medicineDisplayed = true;
-    stateStartTime = millis();
-    sessionActive = true;
-  }
-  
-  // Check for timeout
-  if (millis() - stateStartTime > ACTIVITY_TIMEOUT) {
-    Serial.println("RTOS: Activity timeout");
-    changeState(SLEEP_MODE);
-    medicineDisplayed = false;
-  }
-}
-
-void handleConfirmedState() {
-  static unsigned long confirmedStartTime = 0;
-  static bool delayStarted = false;
-  
-  if (!delayStarted) {
-    confirmedStartTime = millis();
-    delayStarted = true;
-  }
-  
-  if (millis() - confirmedStartTime > CONFIRMED_DELAY) {
-    changeState(SLEEP_MODE);
-    delayStarted = false;
-  }
-}
-
-void handleConfirmButton() {
-  // Block all actions if system is disabled
-  if (!systemEnabled) {
-    Serial.println("RTOS: Confirm blocked - system disabled");
-    Message msg = {MSG_DISPLAY_SYSTEM, "disabled", 0};
-    xQueueSend(displayQueue, &msg, 0);
+void processNetworkRequest(NetworkRequest req) {
+  if (xSemaphoreTake(wifiMutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
+    Serial.println("Failed to acquire WiFi mutex");
     return;
   }
   
-  if (currentState == ACTIVE_MODE && sessionActive && !medicineConfirmed) {
-    // Anti-spam: check minimum time since last confirm
-    if (millis() - lastConfirmTime < MIN_SLEEP_TIME) {
-      Serial.println("RTOS: Confirm blocked - too soon");
-      return;
-    }
-    
-    // Confirm medicine in separate task to avoid blocking
-    xTaskCreate(confirmMedicineTask, "ConfirmMed", 4096, NULL, 1, NULL);
-    
-  } else if (currentState == SLEEP_MODE) {
-    // Wake up from sleep mode
-    changeState(ACTIVE_MODE);
-    Message msg = {MSG_DISPLAY_SYSTEM, "", 0};
-    xQueueSend(displayQueue, &msg, 0);
-  }
-}
-
-void handleInfoButton() {
-  Message msg = {MSG_DISPLAY_INFO, "", 0};
-  xQueueSend(displayQueue, &msg, 0);
-  
-  // Auto return to previous display after 3 seconds
-  xTaskCreate(autoReturnTask, "AutoReturn", 1024, NULL, 1, NULL);
-}
-
-void confirmMedicineTask(void *parameter) {
-  if (confirmMedicine()) {
-    medicineConfirmed = true;
-    lastConfirmTime = millis();
-    
-    Serial.println("RTOS: Medicine confirmed successfully");
-    changeState(CONFIRMED_MODE);
-  } else {
-    Serial.println("RTOS: Medicine confirmation failed");
-  }
-  
-  vTaskDelete(NULL);
-}
-
-void autoReturnTask(void *parameter) {
-  vTaskDelay(pdMS_TO_TICKS(3000));
-  
-  xSemaphoreTake(stateMutex, portMAX_DELAY);
-  if (currentState == ACTIVE_MODE && sessionActive) {
-    Message msg = {MSG_DISPLAY_MEDICINE, currentMedicineName, currentCompartment};
-    xQueueSend(displayQueue, &msg, 0);
-  } else {
-    Message msg = {MSG_DISPLAY_SYSTEM, "", 0};
-    xQueueSend(displayQueue, &msg, 0);
-  }
-  xSemaphoreGive(stateMutex);
-  
-  vTaskDelete(NULL);
-}
-
-void changeState(DeviceState newState) {
-  if (currentState == newState) return;
-  
-  DeviceState oldState = currentState;
-  currentState = newState;
-  
-  Serial.print("RTOS State change: ");
-  Serial.print(getStateName(oldState));
-  Serial.print(" -> ");
-  Serial.println(getStateName(newState));
-  
-  // State-specific initialization
-  switch (newState) {
-    case SLEEP_MODE:
-      sessionActive = false;
-      medicineConfirmed = false;
-      currentMedicineName = "";
-      currentCompartment = 0;
-      break;
-      
-    case ACTIVE_MODE:
-      if (!sessionActive) {
-        sessionActive = true;
-      }
-      turnOnScreen();
-      break;
-      
-    case CONFIRMED_MODE:
-      // Display confirmation message
-      break;
-  }
-  
-  lastActivity = millis();
-}
-
-String getStateName(DeviceState state) {
-  switch (state) {
-    case SLEEP_MODE: return "SLEEP";
-    case ACTIVE_MODE: return "ACTIVE";
-    case CONFIRMED_MODE: return "CONFIRMED";
-    default: return "UNKNOWN";
-  }
-}
-
-void turnOnScreen() {
-  if (!screenOn) {
-    screenOn = true;
-    // Use TFT_eSPI backlight control instead of display commands
-    pinMode(TFT_BL, OUTPUT);
-    digitalWrite(TFT_BL, HIGH);  // Turn on backlight
-    delay(100);
-    tft.fillScreen(TFT_BLACK);
-    Serial.println("RTOS: Screen ON with backlight");
-    logMemoryUsage("Screen ON");
-  }
-}
-
-void turnOffScreen() {
-  if (screenOn) {
-    screenOn = false;
-    tft.fillScreen(TFT_BLACK);
-    // Turn off backlight instead of display
-    pinMode(TFT_BL, OUTPUT);
-    digitalWrite(TFT_BL, LOW);   // Turn off backlight
-    Serial.println("RTOS: Screen OFF - Backlight disabled");
-  }
-}
-
-bool checkSystemStatus() {
-  if (!wifiConnected) {
-    connectToWiFi();
-    if (!wifiConnected) return systemEnabled;  // Keep current status if can't connect
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi not connected, skipping request: " + req.type);
+    xSemaphoreGive(wifiMutex);
+    return;
   }
   
   HTTPClient http;
-  String url = String(serverURL) + "/api/system_status";
+  http.begin(String(serverURL) + req.endpoint);
+  http.addHeader("X-API-Key", "my-secret-key-2025");
+  http.setTimeout(8000);
   
-  http.begin(url);
-  http.addHeader("X-API-Key", apiKey);
+  int code = http.GET();
+  String response = "";
   
-  int httpResponseCode = http.GET();
-  
-  if (httpResponseCode == 200) {
-    String response = http.getString();
-    DynamicJsonDocument doc(512);  // Reduced JSON buffer size
-    
-    if (deserializeJson(doc, response) == DeserializationError::Ok) {
-      bool newStatus = doc["system_enabled"].as<bool>();
-      
-      if (newStatus != systemEnabled) {
-        systemEnabled = newStatus;
-        String statusText = systemEnabled ? "ENABLED" : "DISABLED";
-        Serial.println("RTOS: System status changed to " + statusText);
-        
-        // Update display to show system status change
-        Message msg = {MSG_DISPLAY_SYSTEM, "status_change", systemEnabled ? 1 : 0};
-        xQueueSend(displayQueue, &msg, 0);
-        
-        // If system is disabled, force sleep mode
-        if (!systemEnabled && currentState != SLEEP_MODE) {
-          changeState(SLEEP_MODE);
-        }
-      }
-    }
-  } else {
-    Serial.println("RTOS: Failed to check system status: " + String(httpResponseCode));
+  if (code > 0) {
+    response = http.getString();
   }
   
   http.end();
-  return systemEnabled;
+  xSemaphoreGive(wifiMutex);
+  
+  // Process response based on request type
+  if (req.type == "check_medicine") {
+    processMedicineResponse(code, response);
+  } else if (req.type == "check_info") {
+    processInfoResponse(code, response);
+  } else if (req.type == "check_confirmation") {
+    processConfirmationResponse(code, response);
+  } else if (req.type == "user_profile") {
+    processUserProfileResponse(code, response);
+  }
 }
 
-bool checkForMedicineSchedule() {
-  if (!wifiConnected) {
-    connectToWiFi();
-    if (!wifiConnected) return false;
+void processDisplayMessage(DisplayMessage msg) {
+  if (msg.type == "main") {
+    showMainScreen();
+  } else if (msg.type == "alert") {
+    showAlertScreen();
+  } else if (msg.type == "info") {
+    showUserInfo(msg.data);
+  } else if (msg.type == "error") {
+    showError(msg.data);
+  } else if (msg.type == "confirm") {
+    showConfirmation();
   }
-  
-  // Don't check medicine schedule if system is disabled
-  if (!systemEnabled) {
-    return false;
-  }
-  
-  HTTPClient http;
-  String url = String(serverURL) + "/api/check_schedule_by_user/" + String(userId);
-  
-  http.begin(url);
-  http.addHeader("X-API-Key", apiKey);
-  
-  int httpResponseCode = http.GET();
-  
-  if (httpResponseCode == 200) {
-    String response = http.getString();
-    DynamicJsonDocument doc(1024);  // Reduced JSON buffer size
+}
+
+void processMedicineResponse(int code, String response) {
+  if (code == 200 && response.indexOf("medicine_name") > 0) {
+    // Parse medicine data
+    int start = response.indexOf("\"medicine_name\":\"") + 17;
+    int end = response.indexOf("\"", start);
+    medicine = response.substring(start, end);
     
-    if (deserializeJson(doc, response) == DeserializationError::Ok) {
-      if (doc.size() > 0) {
-        // Medicine schedule found
-        JsonObject schedule = doc[0];
-        currentMedicineName = schedule["medicine_name"].as<String>();
-        currentCompartment = schedule["compartment_number"];
-        
-        Serial.println("RTOS: Medicine schedule found - " + currentMedicineName);
-        return true;
-      }
+    start = response.indexOf("\"compartment_number\":") + 21;
+    end = response.indexOf(",", start);
+    compartmentNum = response.substring(start, end).toInt();
+    
+    start = response.indexOf("\"schedule_id\":") + 14;
+    end = response.indexOf(",", start);
+    scheduleId = response.substring(start, end).toInt();
+    
+    if (!alertActive) {
+      alertActive = true;
+      DisplayMessage msg;
+      msg.type = "alert";
+      msg.priority = 1;
+      xQueueSend(displayQueue, &msg, 0);
+    }
+  } else if (alertActive && response.indexOf("medicine_name") == -1) {
+    alertActive = false;
+    DisplayMessage msg;
+    msg.type = "main";
+    msg.priority = 2;
+    xQueueSend(displayQueue, &msg, 0);
+  }
+}
+
+void processInfoResponse(int code, String response) {
+  if (code == 200 && response.indexOf("\"info_flag_detected\":true") > 0) {
+    Serial.println("INFO flag detected! Processing...");
+    
+    // Extract flag_id
+    int idStart = response.indexOf("\"flag_id\":") + 10;
+    int idEnd = response.indexOf("}", idStart);
+    if (idEnd == -1) idEnd = response.indexOf(",", idStart);
+    int flagId = response.substring(idStart, idEnd).toInt();
+    
+    // Clear flag first
+    clearInfoFlag(flagId);
+    
+    // Request user profile
+    NetworkRequest profileReq;
+    profileReq.type = "user_profile";
+    profileReq.endpoint = "/api/user_profile/" + String(userId);
+    profileReq.param = userId;
+    
+    // Process immediately in this task
+    processNetworkRequest(profileReq);
+  }
+}
+
+void processConfirmationResponse(int code, String response) {
+  if (code == 200 && response.indexOf("\"confirmed\":true") > 0) {
+    int idStart = response.indexOf("\"confirmation_id\":") + 18;
+    int idEnd = response.indexOf("}", idStart);
+    if (idEnd == -1) idEnd = response.indexOf(",", idStart);
+    int confirmId = response.substring(idStart, idEnd).toInt();
+    
+    if (confirmId != currentConfirmationId && confirmId > 0) {
+      currentConfirmationId = confirmId;
+      Serial.println("PI BUTTON CONFIRMATION DETECTED!");
+      
+      // Clear confirmation
+      clearConfirmation(confirmId);
+      
+      // Show confirmation display
+      DisplayMessage msg;
+      msg.type = "confirm";
+      msg.priority = 1;
+      xQueueSend(displayQueue, &msg, 0);
+      
+      // Reset alert state after delay
+      vTaskDelay(pdMS_TO_TICKS(2000));
+      alertActive = false;
+      medicine = "";
+      compartmentNum = 0;
+      scheduleId = 0;
+      
+      DisplayMessage mainMsg;
+      mainMsg.type = "main";
+      mainMsg.priority = 2;
+      xQueueSend(displayQueue, &mainMsg, 0);
     }
   }
-  
-  http.end();
-  return false;
 }
 
-bool confirmMedicine() {
-  if (!wifiConnected) return false;
-  
+void processUserProfileResponse(int code, String response) {
+  if (code == 200) {
+    Serial.println("Displaying user profile...");
+    DisplayMessage msg;
+    msg.type = "info";
+    msg.data = response;
+    msg.priority = 1;
+    xQueueSend(displayQueue, &msg, 0);
+    
+    // Auto return to main screen after 5 seconds
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    DisplayMessage mainMsg;
+    mainMsg.type = "main";
+    mainMsg.priority = 2;
+    xQueueSend(displayQueue, &mainMsg, 0);
+  }
+}
+
+void clearInfoFlag(int flagId) {
   HTTPClient http;
-  String url = String(serverURL) + "/api/confirm_medicine_by_user";
-  
-  http.begin(url);
+  http.begin(String(serverURL) + "/api/clear_info_flag/" + String(flagId));
+  http.addHeader("X-API-Key", "my-secret-key-2025");
   http.addHeader("Content-Type", "application/json");
-  http.addHeader("X-API-Key", apiKey);
   
-  DynamicJsonDocument doc(512);  // Reduced JSON buffer size
-  doc["user_id"] = userId;
-  doc["schedule_id"] = 1; // This should come from the schedule check
-  
-  String jsonString;
-  serializeJson(doc, jsonString);
-  
-  int httpResponseCode = http.POST(jsonString);
-  bool success = (httpResponseCode == 200);
-  
+  int result = http.POST("{}");
+  if (result == 200) {
+    Serial.println("INFO flag cleared successfully!");
+  }
   http.end();
-  return success;
 }
 
-void displayMedicineNotification(String medicineName, int compartment) {
-  logMemoryUsage("Before display medicine");
+void clearConfirmation(int confirmId) {
+  HTTPClient http;
+  http.begin(String(serverURL) + "/api/clear_confirmation/" + String(confirmId));
+  http.addHeader("X-API-Key", "my-secret-key-2025");
+  http.addHeader("Content-Type", "application/json");
   
-  // Force screen on and ensure backlight is active
-  screenOn = true;
-  pinMode(TFT_BL, OUTPUT);
-  digitalWrite(TFT_BL, HIGH);
-  delay(200);  // Longer delay for display stabilization
-  
-  // Re-initialize display if needed
-  tft.init();
-  tft.setRotation(1);
-  
-  // Clear screen with bright color first to test display
-  tft.fillScreen(TFT_RED);
-  delay(100);
-  tft.fillScreen(TFT_BLACK);
-  delay(100);
-  
-  Serial.println("RTOS: Display medicine notification starting...");
-  
-  // Header with bright colors for visibility
-  tft.setTextColor(TFT_WHITE, TFT_BLUE);
-  tft.setTextSize(2);
-  tft.fillRect(0, 0, 320, 40, TFT_BLUE);
-  tft.drawCentreString("UONG THUOC", 160, 10, 2);
-  
-  // Medicine info with bright colors
-  tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-  tft.setTextSize(3);
-  tft.drawCentreString(medicineName, 160, 60, 2);
-  
-  // Compartment info
-  tft.setTextColor(TFT_RED, TFT_BLACK);
-  tft.setTextSize(2);
-  tft.drawCentreString("NGAN " + String(compartment), 160, 110, 2);
-  
-  // Instructions with bright color
-  tft.setTextColor(TFT_GREEN, TFT_BLACK);
-  tft.setTextSize(2);
-  tft.drawCentreString("NHAN BOOT XAC NHAN", 160, 150, 2);
-  
-  // Debug info
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.setTextSize(1);
-  tft.drawString("Screen: ON", 10, 200, 1);
-  tft.drawString("Backlight: HIGH", 10, 215, 1);
-  
-  Serial.println("RTOS: Display medicine notification completed");
-  logMemoryUsage("After display medicine");
-}
-
-void displayUserInfo() {
-  if (!screenOn) turnOnScreen();
-  
-  tft.fillScreen(TFT_BLACK);
-  
-  // Header
-  tft.setTextColor(TFT_WHITE, TFT_GREEN);
-  tft.setTextSize(2);
-  tft.fillRect(0, 0, 320, 40, TFT_GREEN);
-  tft.drawCentreString("THÔNG TIN RTOS", 160, 10, 2);
-  
-  // RTOS info
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.setTextSize(1);
-  tft.drawString("User ID: " + String(userId), 10, 60, 2);
-  tft.drawString("State: " + getStateName(currentState), 10, 80, 2);
-  tft.drawString("Tasks: " + String(uxTaskGetNumberOfTasks()), 10, 100, 2);
-  tft.drawString("Free Heap: " + String(ESP.getFreeHeap()), 10, 120, 2);
-  
-  // Task info
-  tft.setTextColor(TFT_CYAN, TFT_BLACK);
-  tft.drawString("Core 0 Tasks: API", 10, 150, 2);
-  tft.drawString("Core 1 Tasks: State, Display, Button", 10, 170, 2);
-  tft.drawString("WiFi: " + String(wifiConnected ? "OK" : "Failed"), 10, 190, 2);
-  
-  // Queue status
-  tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-  tft.drawString("Button Q: " + String(uxQueueMessagesWaiting(buttonQueue)), 160, 150, 1);
-  tft.drawString("Display Q: " + String(uxQueueMessagesWaiting(displayQueue)), 160, 160, 1);
-  tft.drawString("API Q: " + String(uxQueueMessagesWaiting(apiQueue)), 160, 170, 1);
-}
-
-void displaySystemInfo() {
-  // Force screen on
-  screenOn = true;
-  pinMode(TFT_BL, OUTPUT);
-  digitalWrite(TFT_BL, HIGH);
-  delay(100);
-  
-  tft.fillScreen(TFT_BLACK);
-  
-  // Header with system status color
-  uint16_t headerColor = systemEnabled ? TFT_PURPLE : TFT_RED;
-  tft.setTextColor(TFT_WHITE, headerColor);
-  tft.setTextSize(2);
-  tft.fillRect(0, 0, 320, 40, headerColor);
-  tft.drawCentreString("RTOS MEDICINE", 160, 10, 2);
-  
-  // System Power Status
-  tft.setTextColor(systemEnabled ? TFT_GREEN : TFT_RED, TFT_BLACK);
-  tft.setTextSize(2);
-  String statusText = systemEnabled ? "ENABLED" : "DISABLED";
-  tft.drawCentreString(statusText, 160, 50, 2);
-  
-  // State Status
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.setTextSize(2);
-  tft.drawCentreString("State: " + getStateName(currentState), 160, 90, 2);
-  
-  // Connection status
-  tft.setTextColor(wifiConnected ? TFT_GREEN : TFT_RED, TFT_BLACK);
-  tft.setTextSize(2);
-  tft.drawCentreString("WiFi: " + String(wifiConnected ? "OK" : "FAIL"), 160, 130, 2);
-  
-  // Test display with bright colors
-  tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-  tft.setTextSize(1);
-  tft.drawCentreString("DISPLAY TEST ACTIVE", 160, 170, 2);
-  
-  Serial.println("RTOS: System info displayed");
-}
-
-void connectToWiFi() {
-  if (WiFi.status() == WL_CONNECTED) {
-    wifiConnected = true;
-    return;
+  int result = http.POST("{}");
+  if (result == 200) {
+    Serial.println("Confirmation cleared successfully!");
   }
-  
-  Serial.print("RTOS: Connecting to WiFi");
-  WiFi.begin(ssid, password);
-  
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-    vTaskDelay(pdMS_TO_TICKS(500));
-    Serial.print(".");
-    attempts++;
+  http.end();
+}
+
+// Touch handling functions
+void handleCheckTouch() {
+  Serial.println("Check button touched!");
+  NetworkRequest req;
+  req.type = "check_medicine";
+  req.endpoint = "/api/check_schedule_by_user/" + String(userId);
+  req.param = userId;
+  xQueueSend(networkQueue, &req, 0);
+}
+
+void handleInfoTouch() {
+  Serial.println("Info button touched!");
+  NetworkRequest req;
+  req.type = "user_profile";
+  req.endpoint = "/api/user_profile/" + String(userId);
+  req.param = userId;
+  xQueueSend(networkQueue, &req, 0);
+}
+
+void handleConfirmTouch() {
+  Serial.println("Confirm button touched!");
+  if (alertActive) {
+    DisplayMessage msg;
+    msg.type = "confirm";
+    msg.priority = 1;
+    xQueueSend(displayQueue, &msg, 0);
+    
+    // Send confirmation to server
+    HTTPClient http;
+    http.begin(String(serverURL) + "/api/confirm_medicine_by_user");
+    http.addHeader("X-API-Key", "my-secret-key-2025");
+    http.addHeader("Content-Type", "application/json");
+    
+    String json = "{\"schedule_id\":" + String(scheduleId) + ",\"user_id\":" + String(userId) + "}";
+    http.POST(json);
+    http.end();
+    
+    // Reset state
+    vTaskDelay(pdMS_TO_TICKS(2000));
+    alertActive = false;
+    medicine = "";
+    compartmentNum = 0;
+    scheduleId = 0;
+    
+    DisplayMessage mainMsg;
+    mainMsg.type = "main";
+    mainMsg.priority = 2;
+    xQueueSend(displayQueue, &mainMsg, 0);
   }
+}
+
+bool isTouchInArea(int x, int y, TouchArea area) {
+  return (x >= area.x && x <= (area.x + area.w) && 
+          y >= area.y && y <= (area.y + area.h));
+}
+
+// Display functions
+void showMainScreen() {
+  Serial.println("Displaying main screen");
+  tft.fillScreen(TFT_BLACK);
+  
+  tft.fillRect(0, 0, 320, 30, TFT_BLUE);
+  tft.setTextColor(TFT_WHITE);
+  tft.setTextSize(2);
+  tft.drawString("HE THONG NHAC THUOC", 30, 8);
+  
+  tft.setTextColor(TFT_GREEN);
+  tft.setTextSize(2);
+  tft.drawString("SAN SANG", 110, 40);
+  
+  tft.setTextColor(TFT_WHITE);
+  tft.setTextSize(1);
+  tft.drawString("Nguoi dung: " + String(userId), 10, 70);
   
   if (WiFi.status() == WL_CONNECTED) {
-    wifiConnected = true;
-    Serial.println("\nRTOS: WiFi connected!");
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
+    tft.setTextColor(TFT_GREEN);
+    tft.drawString("WiFi: Ket noi", 10, 85);
   } else {
-    wifiConnected = false;
-    Serial.println("\nRTOS: WiFi connection failed!");
+    tft.setTextColor(TFT_RED);
+    tft.drawString("WiFi: Loi", 10, 85);
   }
+  
+  drawTouchButton(checkButton, TFT_BLUE, "KIEM TRA");
+  drawTouchButton(infoButton, TFT_ORANGE, "THONG TIN");
+  
+  tft.setTextColor(TFT_CYAN);
+  tft.setTextSize(1);
+  tft.drawString("CAM UNG: Cham vao nut de su dung", 40, 190);
+  tft.drawString("Free RAM: " + String(ESP.getFreeHeap()), 40, 205);
 }
 
-// Memory monitoring function
-void logMemoryUsage(String location) {
-  Serial.printf("RTOS Memory [%s]: Free Heap: %d, Min Free: %d, Stack HWM: %d\n",
-    location.c_str(), ESP.getFreeHeap(), ESP.getMinFreeHeap(),
-    uxTaskGetStackHighWaterMark(NULL));
+void showAlertScreen() {
+  Serial.println("Displaying alert screen");
+  for (int i = 0; i < 3; i++) {
+    tft.fillScreen(TFT_RED);
+    vTaskDelay(pdMS_TO_TICKS(150));
+    tft.fillScreen(TFT_BLACK);
+    vTaskDelay(pdMS_TO_TICKS(150));
+  }
+  
+  tft.fillScreen(TFT_BLACK);
+  
+  tft.fillRect(0, 0, 320, 40, TFT_RED);
+  tft.setTextColor(TFT_WHITE);
+  tft.setTextSize(3);
+  tft.drawString("UONG THUOC!", 60, 8);
+  
+  tft.setTextColor(TFT_CYAN);
+  tft.setTextSize(2);
+  tft.drawString("Ten thuoc:", 10, 50);
+  
+  String shortName = medicine;
+  if (shortName.length() > 25) {
+    shortName = shortName.substring(0, 22) + "...";
+  }
+  
+  tft.setTextColor(TFT_WHITE);
+  tft.setTextSize(1);
+  tft.drawString(shortName, 10, 75);
+  
+  tft.setTextColor(TFT_CYAN);
+  tft.setTextSize(2);
+  tft.drawString("Ngan: " + String(compartmentNum), 10, 95);
+  
+  drawTouchButton(confirmButton, TFT_GREEN, "XAC NHAN UONG");
+  
+  tft.setTextColor(TFT_YELLOW);
+  tft.setTextSize(1);
+  tft.drawString("CAM UNG: Cham vao nut xanh", 70, 190);
+  tft.drawString("CHI XAC NHAN SAU KHI UONG!", 55, 205);
+}
+
+void showUserInfo(String data) {
+  Serial.println("Displaying user info");
+  
+  String fullName = extractJsonValue(data, "full_name");
+  String age = extractJsonValue(data, "age");
+  String email = extractJsonValue(data, "email");
+  String phone = extractJsonValue(data, "phone");
+  String dosesTaken = extractJsonValue(data, "doses_taken");
+  String complianceRate = extractJsonValue(data, "compliance_rate");
+  
+  tft.fillScreen(TFT_NAVY);
+  tft.setTextColor(TFT_WHITE);
+  tft.setTextSize(2);
+  tft.drawString("THONG TIN NGUOI DUNG", 20, 10);
+  
+  tft.setTextSize(1);
+  tft.drawString("Ten: " + fullName, 10, 40);
+  tft.drawString("Tuoi: " + age, 10, 60);
+  tft.drawString("Email: " + email, 10, 80);
+  tft.drawString("SDT: " + phone, 10, 100);
+  
+  tft.setTextColor(TFT_YELLOW);
+  tft.drawString("Thong ke tuan:", 10, 120);
+  tft.drawString("Da uong: " + dosesTaken, 10, 140);
+  tft.drawString("Ty le: " + complianceRate + "%", 10, 160);
+  
+  tft.setTextColor(TFT_CYAN);
+  tft.drawString("Tu dong quay lai sau 5s", 60, 190);
+}
+
+void showConfirmation() {
+  Serial.println("Displaying confirmation");
+  tft.fillScreen(TFT_GREEN);
+  tft.setTextColor(TFT_BLACK);
+  tft.setTextSize(3);
+  tft.drawString("XAC NHAN!", 80, 60);
+  tft.setTextSize(2);
+  tft.drawString("Cam on ban!", 90, 100);
+  tft.setTextSize(1);
+  tft.drawString("Pi button da xac nhan", 70, 140);
+}
+
+void showError(String error) {
+  tft.fillRect(10, 100, 300, 40, TFT_RED);
+  tft.setTextColor(TFT_WHITE);
+  tft.setTextSize(1);
+  tft.drawString("LOI: " + error, 15, 110);
+  Serial.println("ERROR: " + error);
+}
+
+void drawTouchButton(TouchArea area, uint16_t color, String text) {
+  tft.fillRoundRect(area.x + 2, area.y + 2, area.w, area.h, 8, TFT_DARKGREY);
+  tft.fillRoundRect(area.x, area.y, area.w, area.h, 8, color);
+  tft.drawRoundRect(area.x, area.y, area.w, area.h, 8, TFT_WHITE);
+  
+  tft.setTextColor(TFT_WHITE);
+  tft.setTextSize(1);
+  int textX = area.x + (area.w - text.length() * 6) / 2;
+  int textY = area.y + area.h / 2 - 4;
+  tft.drawString(text, textX, textY);
+}
+
+String extractJsonValue(String json, String key) {
+  int start = json.indexOf("\"" + key + "\":") + key.length() + 3;
+  int end = json.indexOf(",", start);
+  if (end == -1) end = json.indexOf("}", start);
+  String result = json.substring(start, end);
+  result.replace("\"", "");
+  return result;
 }
