@@ -57,7 +57,7 @@ if __name__ == '__main__':
             print(traceback.format_exc())
     
     try:
-        app.run(debug=True, host='0.0.0.0', port=5000)
+        app.run(debug=True, host='0.0.0.0', port=5001)
     finally:
         if rpi_handler:
             rpi_handler.cleanup()

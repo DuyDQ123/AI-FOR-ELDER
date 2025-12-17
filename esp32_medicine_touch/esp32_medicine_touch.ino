@@ -10,7 +10,7 @@
 // CẬP NHẬT THÔNG TIN NÀY
 const char* ssid = "duy";
 const char* password = "11111111";
-const char* serverURL = "http://192.168.1.159:5000";  // Cập nhật IP đúng
+const char* serverURL = "http://192.168.1.159:5001";  // Cập nhật IP đúng
 const int userId = 13;
 
 TFT_eSPI tft = TFT_eSPI();
