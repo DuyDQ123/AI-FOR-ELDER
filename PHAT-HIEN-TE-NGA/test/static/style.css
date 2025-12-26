@@ -1,0 +1,103 @@
+/* Định dạng tổng thể */
+
+body {
+    font-family: Arial, sans-serif;
+    text-align: center;
+    background-color: #f8f9fa;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+
+/* Container chính */
+
+.container {
+    width: 90%;
+    max-width: 1400px;
+    /* Mở rộng tối đa để phù hợp với màn hình lớn */
+    margin: 20px auto;
+    padding: 30px;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+
+/* Tiêu đề chính */
+
+h1 {
+    color: #333;
+    font-size: 32px;
+    margin-bottom: 20px;
+}
+
+
+/* Hộp hiển thị hành động */
+
+.status {
+    background: #fff;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
+    width: 60%;
+    text-align: center;
+    font-size: 26px;
+    font-weight: bold;
+    text-transform: uppercase;
+    transition: color 0.3s ease-in-out;
+}
+
+
+/* Bố cục hai biểu đồ theo chiều ngang */
+
+.chart-container {
+    display: flex;
+    justify-content: space-between;
+    gap: 30px;
+    width: 100%;
+    margin-top: 20px;
+}
+
+
+/* Biểu đồ */
+
+.chart-box {
+    flex: 1;
+    min-width: 600px;
+    max-width: 700px;
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+
+/* Điều chỉnh canvas để hiển thị biểu đồ tốt hơn */
+
+canvas {
+    width: 100% !important;
+    height: 450px !important;
+    margin: 10px 0;
+}
+
+
+/* Chỉnh sửa form */
+
+form {
+    width: 50%;
+    padding: 20px;
+    margin: 20px auto;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+}

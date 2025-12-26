@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PHÁT HIỆN HÀNH ĐỘNG TÉ NGÃ</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <h1>PHÁT HIỆN HÀNH ĐỘNG TÉ NGÃ</h1>
+
+        <!-- Hộp hiển thị hành động -->
+        <div class="status">
+            <h2>Hành động hiện tại:</h2>
+            <p id="action">Đang chờ dữ liệu...</p>
+        </div>
+
+        <!-- Khu vực chứa hai biểu đồ -->
+        <h2>Biểu đồ dữ liệu cảm biến</h2>
+        <div class="chart-container">
+            <div class="chart-box">
+                <h3>Gia tốc kế</h3>
+                <canvas id="accelChart"></canvas>
+            </div>
+            <div class="chart-box">
+                <h3>Con quay hồi chuyển</h3>
+                <canvas id="gyroChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+
+</html>

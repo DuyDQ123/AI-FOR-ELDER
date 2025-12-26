@@ -1,0 +1,182 @@
+# CÀI ĐẶT CÁC THƯ VIỆN CẦN THIẾT (NẾU CHƯA CÓ)
+!pip install imbalanced-learn torchinfo
+
+!pip install matplotlib-venn
+
+!apt-get -qq install -y libfluidsynth1
+
+# https://pypi.python.org/pypi/libarchive
+!apt-get -qq install -y libarchive-dev && pip install -U libarchive
+
+# https://pypi.python.org/pypi/pydot
+!apt-get -qq install -y graphviz && pip install pydot
+import pydot
+
+!pip install cartopy
+
+import cartopy
+import libarchive
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras import layers, models
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import confusion_matrix, classification_report, precision_score, recall_score, f1_score
+import seaborn as sns
+import matplotlib.pyplot as plt
+import time
+from sklearn.manifold import TSNE
+from torchinfo import summary
+import pandas as pd
+import os
+
+# BƯỚC 1: UPLOAD FILE DỮ LIỆU TRÊN GOOGLE COLAB
+from google.colab import files
+
+uploaded = files.upload()  # Mở hộp thoại để tải file lên
+print("Danh sách file đã tải lên:", os.listdir())
+
+# BƯỚC 2: LOAD DỮ LIỆU
+X = np.load("X_balanced1.npy")
+y = np.load("y_balanced1.npy")
+
+print(f"Số lượng cửa sổ trượt: {len(X)}")
+print(f"Shape của X: {X.shape} (số cửa sổ, 50 mẫu, 6 đặc trưng)")
+print(f"Shape của y: {y.shape} (số cửa sổ)")
+
+# Chia tập train/test
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+print("Số mẫu trong tập huấn luyện:", X_train.shape[0])
+print("Số mẫu trong tập kiểm tra:", X_test.shape[0])
+
+# BƯỚC 3: XÂY DỰNG MÔ HÌNH CNN + LSTM
+def build_model(input_shape):
+    model = models.Sequential([
+        layers.Conv1D(filters=64, kernel_size=3, activation='relu', input_shape=input_shape),
+        layers.MaxPooling1D(pool_size=2),
+        layers.Conv1D(filters=128, kernel_size=3, activation='relu'),
+        layers.MaxPooling1D(pool_size=2),
+        layers.LSTM(64, return_sequences=True),
+        layers.LSTM(64),
+        layers.Dense(128, activation='relu'),
+        layers.Dropout(0.3),
+        layers.Dense(5, activation='softmax')  # 5 lớp (tương ứng 5 hành động)
+    ])
+    
+    model.compile(optimizer='adam', 
+                  loss='sparse_categorical_crossentropy', 
+                  metrics=['accuracy'])
+    return model
+
+model = build_model((50, 6))
+model.summary()
+
+# BƯỚC 4: HUẤN LUYỆN MÔ HÌNH
+start_time = time.time()
+history = model.fit(X_train, y_train, epochs=50, batch_size=1, validation_split=0.2)
+end_time = time.time()
+inference_time = (end_time - start_time) / len(X_test)
+print(f"Inference Time: {inference_time:.6f} s/mẫu")
+
+# LƯU MÔ HÌNH SAU KHI HUẤN LUYỆN
+model.save("/content/fall_detection_model.h5")
+print("✅ Đã lưu mô hình vào fall_detection_model.h5")
+
+# Tính trung bình Validation Loss và Validation Accuracy
+mean_val_loss = np.mean(history.history['val_loss'])
+mean_val_accuracy = np.mean(history.history['val_accuracy'])
+
+print(f"\nValidation Loss: {mean_val_loss:.4f}")
+print(f"Validation Accuracy: {mean_val_accuracy:.4f}")
+
+# BƯỚC 5: ĐÁNH GIÁ MÔ HÌNH
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import classification_report, confusion_matrix, precision_score, recall_score, f1_score
+
+# Dự đoán
+y_pred = model.predict(X_test).argmax(axis=1)
+
+# Tạo báo cáo phân loại dưới dạng bảng
+report = classification_report(y_test, y_pred, output_dict=True)
+report_df = pd.DataFrame(report).transpose()
+
+# Hiển thị báo cáo dưới dạng bảng
+print("📊 Báo cáo phân loại:")
+print(report_df)
+
+# Tính toán Precision, Recall, F1-score thủ công và hiển thị dưới dạng bảng
+metrics_data = {
+    "Metric": ["Precision", "Recall", "F1-score"],
+    "Value": [
+        precision_score(y_test, y_pred, average='macro'),
+        recall_score(y_test, y_pred, average='macro'),
+        f1_score(y_test, y_pred, average='macro')
+    ]
+}
+metrics_df = pd.DataFrame(metrics_data)
+print("\n📌 Chỉ số tổng quát:")
+print(metrics_df)
+
+# Vẽ Confusion Matrix
+cm = confusion_matrix(y_test, y_pred)
+plt.figure(figsize=(6, 5))
+sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=np.unique(y_test), yticklabels=np.unique(y_test))
+plt.title("Confusion Matrix")
+plt.xlabel("Predicted Label")
+plt.ylabel("True Label")
+plt.show()
+
+
+# BƯỚC 6: TRỰC QUAN HÓA DỮ LIỆU BẰNG t-SNE
+X_flat = X_test.reshape(X_test.shape[0], -1)
+
+# Khởi tạo và chạy t-SNE
+tsne = TSNE(n_components=2, perplexity=30, random_state=42)
+X_tsne = tsne.fit_transform(X_flat)
+
+# Nhãn và màu sắc cho từng loại hành động
+labels = ["Ngã về phía trước", "Ngã về phía sau", "Ngã sang trái", "Ngã sang phải", "Đứng bình thường"]
+colors = ["red", "blue", "green", "purple", "orange"]
+
+# Vẽ biểu đồ t-SNE
+plt.figure(figsize=(10, 8))
+for i, label in enumerate(np.unique(y_test)):
+    plt.scatter(X_tsne[y_test == label, 0], X_tsne[y_test == label, 1], 
+                label=labels[i], color=colors[i], alpha=0.6)
+
+plt.title("t-SNE Visualization of Fall Detection Data")
+plt.xlabel("First t-SNE Component")
+plt.ylabel("Second t-SNE Component")
+plt.legend()
+plt.show()
+
+# BƯỚC 7: TÍNH TOÁN PARAMETER & FLOPs
+summary(model, input_size=(1, 50, 6))
+
+#cai them thu vien
+import torch.nn as nn
+from torchinfo import summary
+
+model = nn.Sequential(
+    nn.Linear(6, 128),
+    nn.ReLU(),
+    nn.Linear(128, 50)
+)
+
+summary(model, input_size=(1, 6))
+
+# BƯỚC 8: XUẤT KẾT QUẢ DỰ ĐOÁN RA FILE CSV
+df = pd.DataFrame({
+    "True_Label": y_test,
+    "Predicted_Label": y_pred
+})
+df.to_csv("fall_detection_results.csv", index=False)
+print("✅ Đã lưu kết quả vào fall_detection_results.csv")
+
+# BƯỚC 9: TẢI FILE MÔ HÌNH VỀ MÁY
+files.download("/content/fall_detection_model.h5")
+
+# BƯỚC 10: LƯU FILE KẾT QUẢ DỰ ĐOÁN VỀ MÁY
+files.download("fall_detection_results.csv")
