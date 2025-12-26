@@ -1,15 +1,8 @@
 # HỆ THỐNG GIÁM SÁT VÀ PHÂN TÍCH HÀNH ĐỘNG TÉ NGÃ
 
-<p align="center">
-  <img src="images/logoDaiNam.png" alt="DaiNam University Logo" width="200"/>
-  <img src="images/LogoAIoTLab.png" alt="AIoTLab Logo" width="170"/>
-</p>
 
 <div align="center">
 
-[![Made by AIoTLab](https://img.shields.io/badge/Made%20by%20AIoTLab-blue?style=for-the-badge)](https://www.facebook.com/DNUAIoTLab)
-[![Fit DNU](https://img.shields.io/badge/Fit%20DNU-green?style=for-the-badge)](https://fitdnu.net/)
-[![DaiNam University](https://img.shields.io/badge/DaiNam%20University-red?style=for-the-badge)](https://dainam.edu.vn)
 
 </div>
 
@@ -192,10 +185,6 @@ Cài đặt Python 3 nếu chưa có, sau đó cài đặt các thư viện cầ
 3. Thời gian gửi tin nhắn thông báo: cập nhật hành động ngã mới nhất sau sau 2 giây.
 4. Môi trường mạng: 
 - Thiết bị esp32 cần kết nối cùng mạng với máy chủ.
-
-## 📰 Poster
-![Poster_Group3-CNTT1604](https://github.com/user-attachments/assets/1bdc36ee-55a4-4208-b89d-b2c73969059d)
-
 
 
 ## 🤝 Đóng góp
