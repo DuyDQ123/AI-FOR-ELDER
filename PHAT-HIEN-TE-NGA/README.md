@@ -187,14 +187,3 @@ Cài đặt Python 3 nếu chưa có, sau đó cài đặt các thư viện cầ
 - Thiết bị esp32 cần kết nối cùng mạng với máy chủ.
 
 
-## 🤝 Đóng góp
-Dự án được phát triển bởi 4 thành viên:
-
-| Họ và Tên              | Vai trò                  |
-|------------------------|--------------------------|
-| Phạm Thị Hồng Ngọc     | Phát triển toàn bộ mã nguồn, train model, kiểm thử, biên soạn tài liệu Overleaf, Poster Powerpoint triển khai dự án và thực hiện video giới thiệu.|
-| Nguyễn Đức ThườngThường| Hỗ trợ Poster, Powerpoint, thuyết trình, hỗ trợ bài tập lớn |
-| Nguyễn Đào Nguyên Giáp | Thuyết trình, hỗ trợ bài tập lớn.  |
-| Nguyễn Hải Phong       | Hỗ trợ bài tập lớn. |
-
-© 2025 NHÓM 3, CNTT16-04, TRƯỜNG ĐẠI HỌC ĐẠI NAM
