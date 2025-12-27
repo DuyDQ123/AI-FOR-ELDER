@@ -12,8 +12,8 @@ MODEL_PATH = "test/fall_detection_model.h5"
 model = tf.keras.models.load_model(MODEL_PATH)
 
 # Thông tin Telegram Bot
-TELEGRAM_BOT_TOKEN = "7413376592:AAEEWYDNOT2SL3CHW3M71mVOJNtrrykf2no"
-TELEGRAM_CHAT_ID = "-4679083892"
+TELEGRAM_BOT_TOKEN = ""
+TELEGRAM_CHAT_ID = ""
 
 def send_telegram_alert(message, notify=True):
     """Gửi cảnh báo đến Telegram"""
